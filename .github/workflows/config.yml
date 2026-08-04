@@ -1,0 +1,99 @@
+# 組織設定變更
+# SPEC.md §9.2、§13
+#
+# 直接編輯 data/config.json 再 commit 是可行的，但那條路繞過了授權檢查、
+# 繞過了結構驗證，也不會產生稽核紀錄——分支保護與稽核都會形同虛設。
+#
+# 設定會影響誰能被抽中、每輪放幾支籤，影響力不亞於抽籤本身，理當同樣留痕。
+# 因此請一律使用本流程，不要手動編輯 data/ 底下的檔案。
+
+name: 組織設定變更
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "要執行的動作"
+        required: true
+        type: choice
+        options:
+          - add-unit
+          - rename-unit
+          - move-unit
+          - set-tickets
+          - deactivate-unit
+          - reactivate-unit
+          - add-court
+          - rename-court
+          - deactivate-court
+          - add-case-type
+          - rename-case-type
+          - set-rule
+          - add-operator
+          - revoke-operator
+      params:
+        description: >-
+          參數（JSON）。例：
+          新增股 {"id":"un-09","name":"平股","courtId":"ct-19","ticketsPerCycle":3}；
+          改每輪籤數 {"id":"un-09","ticketsPerCycle":1}；
+          停用股 {"id":"un-09"}；
+          更名 {"id":"un-01","name":"新名稱"}；
+          新增授權 {"githubLogin":"someone","displayName":"某某","role":"DRAW_OPERATOR"}
+        required: true
+        type: string
+      reason:
+        description: "變更理由（必填，會公開）"
+        required: true
+        type: string
+
+# 與抽籤共用同一個序列，避免設定變更與抽籤同時修改籤筒
+concurrency:
+  group: lottery
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      ACTOR: ${{ github.actor }}
+      ACTION: ${{ inputs.action }}
+      PARAMS: ${{ inputs.params }}
+      REASON: ${{ inputs.reason }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: 演算法自我測試
+        run: node --test engine/test/unitchange.test.mjs engine/test/config.test.mjs engine/test/authorize.test.mjs
+
+      - name: 設定 git 身分
+        run: |
+          git config user.name "court-lottery[bot]"
+          git config user.email "court-lottery@users.noreply.github.com"
+
+      - name: 執行設定變更
+        run: node engine/run-config.mjs
+
+      # 變更後再驗一次：設定與籤筒必須同時是合法的
+      - name: 變更後完整性驗證
+        run: |
+          npm ci
+          node tools/verify-all.mjs
+
+      - name: 推送
+        run: |
+          git add data/
+          git commit -m "設定變更：${{ inputs.action }}（${{ inputs.reason }}）"
+          git push

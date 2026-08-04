@@ -88,14 +88,19 @@ export async function verifyToken(config, token) {
   return { ok: true, login };
 }
 
-/** 發動抽籤工作流程 */
-export async function dispatchDraw(config, token, inputs) {
+/** 發動指定的工作流程 */
+export async function dispatchWorkflow(config, token, workflowFile, inputs) {
   const g = config.github;
-  await call(token, `/repos/${g.owner}/${g.repo}/actions/workflows/${g.workflowFile}/dispatches`, {
+  await call(token, `/repos/${g.owner}/${g.repo}/actions/workflows/${workflowFile}/dispatches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ref: g.branch, inputs }),
   });
+}
+
+/** 發動抽籤工作流程 */
+export async function dispatchDraw(config, token, inputs) {
+  return dispatchWorkflow(config, token, config.github.workflowFile, inputs);
 }
 
 /**
@@ -104,14 +109,15 @@ export async function dispatchDraw(config, token, inputs) {
  * GitHub 的 dispatch API 不回傳 run id，只能事後比對。
  * 以「建立時間晚於發動時刻」篩選，並扣掉 60 秒容許伺服器時鐘差。
  */
-export async function findRun(config, token, sinceMs, { attempts = 20, intervalMs = 3000 } = {}) {
+export async function findRun(config, token, sinceMs, { attempts = 20, intervalMs = 3000, workflowFile = null } = {}) {
   const g = config.github;
   const cutoff = sinceMs - 60000;
+  const file = workflowFile ?? g.workflowFile;
 
   for (let i = 0; i < attempts; i++) {
     const data = await call(
       token,
-      `/repos/${g.owner}/${g.repo}/actions/workflows/${g.workflowFile}/runs?event=workflow_dispatch&per_page=10`
+      `/repos/${g.owner}/${g.repo}/actions/workflows/${file}/runs?event=workflow_dispatch&per_page=10`
     );
     const runs = (data?.workflow_runs ?? []).filter((r) => new Date(r.created_at).getTime() >= cutoff);
     if (runs.length > 0) {

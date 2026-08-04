@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>組織管理 — 案件分案抽籤系統</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="css/large-type.css">
+<style>
+  .card { border:4px solid var(--border-strong); border-radius:var(--radius); margin-bottom:1.4rem; overflow:hidden; }
+  .card > h2 { margin:0; padding:.5rem .9rem; font-size:1.25rem; font-weight:700; background:var(--text); color:var(--bg); }
+  .card > .body { padding:.9rem; }
+
+  .item { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.7rem; align-items:center;
+          padding:.6rem 0; border-bottom:2px solid var(--border); }
+  .item:last-child { border-bottom:0; }
+  .item .who { font-size:1.1rem; font-weight:700; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+  .item .acts { display:flex; gap:.4rem; flex-wrap:wrap; }
+  .item .acts button { min-height:56px; min-width:56px; padding:.2rem .7rem; font-size:.9rem;
+                       font-family:inherit; font-weight:700; color:var(--text); background:var(--surface);
+                       border:3px solid var(--border-strong); border-radius:var(--radius); cursor:pointer; }
+  .item .acts button.danger { color:var(--danger); border-color:var(--danger); background:var(--danger-bg); }
+  .item.off { background:var(--surface); }
+  .item.off .who { color:var(--text-muted); text-decoration:line-through; }
+
+  .addform { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));
+             gap:.8rem; padding-top:.8rem; border-top:3px solid var(--border-strong); margin-top:.6rem; }
+  .addform .full { grid-column:1/-1; }
+
+  dialog { border:5px solid var(--border-strong); border-radius:var(--radius); background:var(--bg);
+           color:var(--text); max-width:min(94vw,44rem); padding:1.2rem; font-family:var(--ff); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>組織管理</h1>
+    <div id="nav"></div>
+  </header>
+
+  <main id="app"><p class="empty">載入中…</p></main>
+
+  <footer class="site">
+    <p>所有變更皆須填寫理由，經 GitHub Actions 執行，並產生公開的稽核紀錄。
+       請勿直接編輯 <code>data/</code> 底下的檔案——那會繞過授權檢查、結構驗證與稽核。</p>
+  </footer>
+
+</div>
+
+<dialog id="dlg"></dialog>
+
+<script type="module">
+import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
+import { courtBadge, nav, esc, fail } from './js/ui.mjs';
+import * as gh from './js/github.mjs';
+
+document.getElementById('nav').innerHTML = nav('admin.html');
+const app = document.getElementById('app');
+const dlg = document.getElementById('dlg');
+
+let config, state, operators = { operators: [] };
+
+/* ── 權杖 ─────────────────────────────────────────────────── */
+
+function renderToken(msg = '') {
+  app.innerHTML = `
+    <section>
+      <h2 class="sec">請先貼上你的個人權杖</h2>
+      <p class="note">
+        組織管理需要 <strong>ADMIN</strong> 權限。權杖只存在這台電腦的瀏覽器裡。<br>
+        Permissions 只需勾選 <strong>Actions: Read and write</strong>。
+      </p>
+      ${msg ? `<div class="note warn" role="alert">${esc(msg)}</div>` : ''}
+      <div style="margin-top:1rem">
+        <label for="tok">個人權杖</label>
+        <input type="password" id="tok" autocomplete="off" spellcheck="false" style="min-height:74px">
+      </div>
+      <div class="row" style="margin-top:1rem">
+        <button class="btn" id="savetok" type="button">驗證並儲存</button>
+      </div>
+    </section>`;
+  document.getElementById('savetok').addEventListener('click', async () => {
+    const el = document.getElementById('tok');
+    const t = el.value.trim();
+    if (!t) return renderToken('請先貼上權杖');
+    el.value = '';
+    app.innerHTML = `<p class="empty">驗證中…</p>`;
+    try { await gh.verifyToken(config, t); gh.setToken(t); render(); }
+    catch (e) { renderToken(e.message); }
+  });
+}
+
+/* ── 執行變更 ─────────────────────────────────────────────── */
+
+async function execute(action, params, describe) {
+  const reason = prompt(`${describe}\n\n請填寫變更理由（會公開）：`);
+  if (reason === null) return;
+  if (!reason.trim()) return alert('必須填寫理由');
+
+  dlg.innerHTML = `<h2 style="margin-top:0;font-size:1.3rem">執行中</h2>
+    <p style="font-size:1.05rem">${esc(describe)}</p>
+    <p id="stat" style="font-weight:700">正在送出請求…</p>`;
+  dlg.showModal();
+  const stat = document.getElementById('stat');
+
+  try {
+    const t0 = Date.now();
+    await gh.dispatchWorkflow(config, gh.getToken(), 'config.yml', {
+      action, params: JSON.stringify(params), reason: reason.trim(),
+    });
+
+    stat.textContent = '等待伺服器開始執行…';
+    const run = await gh.findRun(config, gh.getToken(), t0, { workflowFile: 'config.yml' });
+    if (!run) throw new Error('已送出請求，但找不到執行紀錄。請至 Actions 頁面查看。');
+
+    const url = gh.runUrl(config, run.id);
+    stat.innerHTML = `執行中…<br><a href="${url}" target="_blank" rel="noopener">查看執行紀錄</a>`;
+
+    const done = await gh.waitRun(config, gh.getToken(), run.id);
+    if (done.conclusion !== 'success') {
+      dlg.innerHTML = `<h2 style="margin-top:0;font-size:1.3rem">變更未完成</h2>
+        <div class="note warn">
+          結論：${esc(done.conclusion)}<br><br>
+          常見原因：權限不足（需 ADMIN）、參數不正確，或變更後的設定未通過結構驗證。<br>
+          <strong>未通過驗證時系統不會寫入任何檔案</strong>，設定維持原狀。<br><br>
+          <a href="${url}" target="_blank" rel="noopener">查看詳細原因</a>
+        </div>
+        <div class="row" style="margin-top:1rem"><button class="btn" onclick="location.reload()">重新載入</button></div>`;
+      return;
+    }
+
+    dlg.innerHTML = `<h2 style="margin-top:0;font-size:1.3rem">變更完成</h2>
+      <p style="font-size:1.1rem;font-weight:700">${esc(describe)}</p>
+      <p class="note">已產生公開的稽核紀錄。<a href="${url}" target="_blank" rel="noopener">查看執行紀錄</a></p>
+      <div class="row" style="margin-top:1rem">
+        <button class="btn" onclick="location.reload()">重新載入以顯示最新設定</button>
+      </div>`;
+  } catch (e) {
+    dlg.innerHTML = `<h2 style="margin-top:0;font-size:1.3rem">發生錯誤</h2>
+      <div class="note warn">${esc(e.message)}</div>
+      <div class="row" style="margin-top:1rem"><button class="btn" onclick="location.reload()">重新載入</button></div>`;
+  }
+}
+
+/* ── 畫面 ─────────────────────────────────────────────────── */
+
+const val = (id) => document.getElementById(id).value.trim();
+
+function render() {
+  const units = config.units.slice().sort((a, b) => a.order - b.order);
+  const courts = config.courts.slice().sort((a, b) => a.order - b.order);
+  const abnormal = units.filter((u) => u.active && (u.ticketsPerCycle ?? 1) !== 1);
+
+  app.innerHTML = `
+    ${abnormal.length ? `<div class="note warn" role="alert" style="margin-bottom:1.2rem">
+      <strong>提醒：有 ${abnormal.length} 個股的每輪籤數不等於 1</strong><br>
+      ${abnormal.map((u) => `${esc(u.name)}　每輪 ${u.ticketsPerCycle} 支`).join('<br>')}<br><br>
+      新股追分完成後請記得改回 1，否則該股會長期多分案件。
+    </div>` : ''}
+
+    <div class="card">
+      <h2>股別（${units.filter((u) => u.active).length} 個在職）</h2>
+      <div class="body">
+        ${units.map((u) => `
+          <div class="item${u.active ? '' : ' off'}">
+            <div class="who">
+              ${esc(u.name)} ${courtBadge(config, u.courtId, { short: true })}
+              <span class="tag perc">每輪 ${u.ticketsPerCycle ?? 1} 支</span>
+              ${u.active ? '' : '<span class="badge b-plain">已停用</span>'}
+            </div>
+            <div class="acts">
+              ${u.active ? `
+                <button data-a="rename-unit" data-id="${esc(u.id)}" data-n="${esc(u.name)}">更名</button>
+                <button data-a="move-unit" data-id="${esc(u.id)}" data-n="${esc(u.name)}">改隸</button>
+                <button data-a="set-tickets" data-id="${esc(u.id)}" data-n="${esc(u.name)}" data-t="${u.ticketsPerCycle ?? 1}">籤數</button>
+                <button class="danger" data-a="deactivate-unit" data-id="${esc(u.id)}" data-n="${esc(u.name)}">停用</button>
+              ` : `<button data-a="reactivate-unit" data-id="${esc(u.id)}" data-n="${esc(u.name)}">復職</button>`}
+            </div>
+          </div>`).join('')}
+
+        <div class="addform">
+          <div class="full"><strong style="font-size:1.05rem">新增股別</strong></div>
+          <div><label for="nu-id">代號</label><input type="text" id="nu-id" placeholder="un-09"></div>
+          <div><label for="nu-name">名稱</label><input type="text" id="nu-name" placeholder="○股"></div>
+          <div><label for="nu-court">所屬庭</label>
+            <select id="nu-court">${courts.filter((c) => c.active !== false)
+              .map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></div>
+          <div><label for="nu-t">每輪籤數</label><input type="text" id="nu-t" value="1"></div>
+          <div class="full">
+            <p class="note" style="margin:0 0 .6rem">
+              新股手上沒案時可設每輪多支籤以追分（例如 3）。<strong>新增後會立即投入現有籤筒</strong>，
+              追分完成後須手動改回 1。
+            </p>
+            <button class="btn" id="add-unit">新增股別</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>庭別</h2>
+      <div class="body">
+        ${courts.map((c) => {
+          const n = units.filter((u) => u.active && u.courtId === c.id).length;
+          return `<div class="item${c.active === false ? ' off' : ''}">
+            <div class="who">${courtBadge(config, c.id)} <span style="font-size:.9rem;color:var(--text-muted)">在職 ${n} 股</span></div>
+            <div class="acts">
+              <button data-a="rename-court" data-id="${esc(c.id)}" data-n="${esc(c.name)}">更名</button>
+              ${c.active === false ? '' :
+                `<button class="danger" data-a="deactivate-court" data-id="${esc(c.id)}" data-n="${esc(c.name)}">停用</button>`}
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="addform">
+          <div class="full"><strong style="font-size:1.05rem">新增庭別</strong></div>
+          <div><label for="nc-id">代號</label><input type="text" id="nc-id" placeholder="ct-20"></div>
+          <div><label for="nc-name">名稱</label><input type="text" id="nc-name" placeholder="第二十庭"></div>
+          <div><label for="nc-short">簡稱</label><input type="text" id="nc-short" placeholder="20庭"></div>
+          <div><label for="nc-color">顏色</label>
+            <select id="nc-color">
+              <option value="blue">藍 ■</option><option value="green">綠 ●</option>
+              <option value="amber">琥珀 ▲</option><option value="purple">紫 ◆</option>
+            </select></div>
+          <div class="full"><button class="btn" id="add-court">新增庭別</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>案類</h2>
+      <div class="body">
+        ${config.caseTypes.map((c) => `
+          <div class="item${c.active ? '' : ' off'}">
+            <div class="who">${esc(c.name)}
+              <span style="font-size:.9rem;color:var(--text-muted)">
+                ${state.bins[c.id] ? `籤筒 ${state.bins[c.id].tickets.length} 支，第 ${state.bins[c.id].cycle} 輪` : '尚無籤筒'}
+              </span>
+            </div>
+            <div class="acts">
+              <button data-a="rename-case-type" data-id="${esc(c.id)}" data-n="${esc(c.name)}">更名</button>
+            </div>
+          </div>`).join('')}
+        <div class="addform">
+          <div class="full"><strong style="font-size:1.05rem">新增案類</strong></div>
+          <div><label for="nt-id">代號</label><input type="text" id="nt-id" placeholder="minshi"></div>
+          <div><label for="nt-name">名稱</label><input type="text" id="nt-name" placeholder="○○案"></div>
+          <div class="full">
+            <p class="note" style="margin:0 0 .6rem">新增案類會自動建立一個獨立籤筒，與現有案類互不影響。</p>
+            <button class="btn" id="add-ct">新增案類</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>抽籤授權</h2>
+      <div class="body">
+        ${operators.operators.length === 0 ? '<p class="empty">授權清單為空，無人可執行抽籤</p>' :
+          operators.operators.map((o) => `
+          <div class="item${o.validTo ? ' off' : ''}">
+            <div class="who">${esc(o.displayName || o.githubLogin)}
+              <span class="tag perc">${esc(o.role)}</span>
+              <span style="font-size:.85rem;color:var(--text-muted)">
+                ${esc(o.githubLogin)}　${o.validTo ? `已於 ${esc(o.validTo)} 撤銷` : `自 ${esc(o.validFrom ?? '')} 起`}
+              </span>
+            </div>
+            <div class="acts">
+              ${o.validTo ? '' :
+                `<button class="danger" data-a="revoke-operator" data-id="${esc(o.githubLogin)}" data-n="${esc(o.displayName || o.githubLogin)}">撤銷</button>`}
+            </div>
+          </div>`).join('')}
+        <div class="addform">
+          <div class="full"><strong style="font-size:1.05rem">新增授權</strong></div>
+          <div><label for="no-login">GitHub 帳號</label><input type="text" id="no-login"></div>
+          <div><label for="no-name">顯示名稱</label><input type="text" id="no-name"></div>
+          <div><label for="no-role">角色</label>
+            <select id="no-role">
+              <option value="DRAW_OPERATOR">DRAW_OPERATOR（只能抽籤）</option>
+              <option value="ADMIN">ADMIN（可作廢、可改設定）</option>
+            </select></div>
+          <div class="full">
+            <p class="note" style="margin:0 0 .6rem">
+              撤銷授權時<strong>不會刪除該筆紀錄</strong>，只填入失效日期——撤銷本身也是需要留存的稽核事實。
+            </p>
+            <button class="btn" id="add-op">新增授權</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>規則參數</h2>
+      <div class="body">
+        <p class="note">
+          這些參數會改變抽籤行為，修改前請確認影響。變更同樣會產生公開稽核紀錄。
+        </p>
+        ${[['refillWhenRemainingAtMost', '補籤門檻（剩幾支時補籤）'],
+           ['maxOffsetPerCase', '抵分件數上限'],
+           ['maxRefillLoops', '連鎖補籤次數上限'],
+           ['refillWhenTwoTicketsSameCourt', '剩 2 支同庭時補籤'],
+           ['redrawReturnsTicket', '迴避重抽時原籤放回']].map(([k, label]) => `
+          <div class="item">
+            <div class="who">${esc(label)}
+              <span class="tag perc">${String(config.rules[k])}</span></div>
+            <div class="acts"><button data-a="set-rule" data-id="${esc(k)}" data-n="${esc(label)}">修改</button></div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  /* 逐項動作 */
+  app.querySelectorAll('[data-a]').forEach((b) => b.addEventListener('click', () => {
+    const a = b.dataset.a, id = b.dataset.id, n = b.dataset.n;
+    if (a === 'rename-unit' || a === 'rename-court' || a === 'rename-case-type') {
+      const name = prompt(`「${n}」的新名稱：`, n);
+      if (!name || name === n) return;
+      execute(a, { id, name }, `更名：${n} → ${name}`);
+    } else if (a === 'move-unit') {
+      const list = courts.filter((c) => c.active !== false);
+      const pick = prompt(`「${n}」改隸至哪一庭？請輸入代號：\n\n` +
+        list.map((c) => `${c.id}　${c.name}`).join('\n'));
+      if (!pick) return;
+      if (!list.some((c) => c.id === pick.trim())) return alert('沒有這個庭別代號');
+      execute(a, { id, courtId: pick.trim() }, `${n} 改隸至 ${list.find((c) => c.id === pick.trim()).name}`);
+    } else if (a === 'set-tickets') {
+      const cur = b.dataset.t;
+      const v = prompt(`「${n}」的每輪籤數（目前 ${cur}）：\n\n不影響現有籤筒，自下次補籤起生效。`, cur);
+      if (!v || v === cur) return;
+      const num = Number(v);
+      if (!Number.isInteger(num) || num < 1) return alert('必須是 1 以上的整數');
+      execute(a, { id, ticketsPerCycle: num }, `${n} 每輪籤數：${cur} → ${num}`);
+    } else if (a === 'deactivate-unit') {
+      if (!confirm(`確定停用「${n}」？\n\n他的籤會立即自所有籤筒撤出，並執行補籤檢查。`)) return;
+      execute(a, { id }, `停用股別 ${n}`);
+    } else if (a === 'reactivate-unit') {
+      if (!confirm(`確定讓「${n}」復職？\n\n自下次補籤起參與抽籤，本輪不投入籤。`)) return;
+      execute(a, { id }, `${n} 復職`);
+    } else if (a === 'deactivate-court') {
+      if (!confirm(`確定停用「${n}」？\n\n該庭底下若仍有在職股，系統會拒絕。`)) return;
+      execute(a, { id }, `停用庭別 ${n}`);
+    } else if (a === 'revoke-operator') {
+      if (!confirm(`確定撤銷「${n}」的抽籤授權？\n\n紀錄會保留，只填入失效日期。`)) return;
+      execute(a, { githubLogin: id }, `撤銷 ${n} 的授權`);
+    } else if (a === 'set-rule') {
+      const cur = config.rules[id];
+      const v = prompt(`${n}\n\n目前值：${cur}\n請輸入新值：`, String(cur));
+      if (v === null || v === String(cur)) return;
+      execute(a, { key: id, value: v }, `${n}：${cur} → ${v}`);
+    }
+  }));
+
+  /* 新增表單 */
+  document.getElementById('add-unit').addEventListener('click', () => {
+    const id = val('nu-id'), name = val('nu-name'), courtId = val('nu-court'), t = Number(val('nu-t') || '1');
+    if (!id || !name) return alert('代號與名稱為必填');
+    if (!Number.isInteger(t) || t < 1) return alert('每輪籤數必須是 1 以上的整數');
+    execute('add-unit', { id, name, courtId, ticketsPerCycle: t },
+      `新增股別 ${name}（每輪 ${t} 支，立即投入現有籤筒）`);
+  });
+  document.getElementById('add-court').addEventListener('click', () => {
+    const id = val('nc-id'), name = val('nc-name');
+    if (!id || !name) return alert('代號與名稱為必填');
+    execute('add-court', { id, name, shortName: val('nc-short') || name, color: val('nc-color') },
+      `新增庭別 ${name}`);
+  });
+  document.getElementById('add-ct').addEventListener('click', () => {
+    const id = val('nt-id'), name = val('nt-name');
+    if (!id || !name) return alert('代號與名稱為必填');
+    execute('add-case-type', { id, name }, `新增案類 ${name}（會建立獨立籤筒）`);
+  });
+  document.getElementById('add-op').addEventListener('click', () => {
+    const githubLogin = val('no-login');
+    if (!githubLogin) return alert('GitHub 帳號為必填');
+    execute('add-operator', { githubLogin, displayName: val('no-name') || githubLogin, role: val('no-role') },
+      `新增授權：${githubLogin}（${val('no-role')}）`);
+  });
+}
+
+/* ── 進入點 ──────────────────────────────────────────────── */
+
+try {
+  const d = await loadAll();
+  config = d.config;
+  state = d.state;
+
+  try {
+    const res = await fetch(d.base + 'operators.json', { cache: 'no-store' });
+    if (res.ok) operators = await res.json();
+  } catch { /* 授權清單讀不到時仍可管理其他項目 */ }
+
+  if (!config.github?.owner) {
+    app.innerHTML = `<div class="note warn">config.json 缺少 github 設定，管理頁無法運作。</div>`;
+  } else if (!gh.getToken()) {
+    renderToken();
+  } else {
+    render();
+  }
+} catch (err) {
+  fail(app, err);
+}
+</script>
+</body>
+</html>

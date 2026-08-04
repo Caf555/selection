@@ -116,6 +116,7 @@ export function nav(current) {
     ['history.html', '歷史查詢'],
     ['verify.html', '結果驗證'],
     ['draw.html', '抽籤台'],
+    ['admin.html', '組織管理'],
   ];
   return (
     `<nav class="main" aria-label="主要導覽">` +

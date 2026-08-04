@@ -10,80 +10,50 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { loadConfig } from '../state.mjs';
-import { createAllBins, activeUnits, courtIdOf, normalizeBin } from '../lottery.mjs';
+import { createAllBins, activeUnits, normalizeBin } from '../lottery.mjs';
+import { validateConfig } from '../validate-config.mjs';
 
 const config = loadConfig();
 
+/** 取得一份可安全修改的設定副本 */
+const clone = () => structuredClone(config);
+
 describe('data/config.json 結構驗證', () => {
-  test('庭別：ID 唯一、order 唯一、必要欄位齊備', () => {
-    const ids = new Set();
-    const orders = new Set();
-    for (const c of config.courts) {
-      assert.ok(c.id && typeof c.id === 'string', `庭別缺少 id：${JSON.stringify(c)}`);
-      assert.ok(!ids.has(c.id), `庭別 ID 重複：${c.id}`);
-      ids.add(c.id);
-      assert.ok(c.name, `庭別 ${c.id} 缺少名稱`);
-      assert.ok(Number.isInteger(c.order), `庭別 ${c.id} 的 order 必須為整數`);
-      assert.ok(!orders.has(c.order), `庭別 order 重複：${c.order}`);
-      orders.add(c.order);
+  test('正式設定通過全部結構驗證', () => {
+    const problems = validateConfig(config);
+    assert.deepEqual(problems, [], '正式設定有問題：\n  ' + problems.join('\n  '));
+  });
+
+  test('驗證器抓得出各種會使系統失效的設定錯誤', () => {
+    const cases = [
+      ['庭別 ID 重複', (c) => { c.courts.push({ ...c.courts[0], order: 99 }); }, /ID 重複/],
+      ['股別 order 重複', (c) => { c.units[1].order = c.units[0].order; }, /order 重複/],
+      ['股別所屬庭不存在', (c) => { c.units[0].courtId = 'ct-xx'; }, /不存在/],
+      ['在職股名稱重複', (c) => { c.units[1].name = c.units[0].name; }, /名稱重複/],
+      ['顏色不在樣式表支援範圍', (c) => { c.courts[0].color = 'pink'; }, /顏色/],
+      ['每輪籤數為 0', (c) => { c.units[0].ticketsPerCycle = 0; }, /每輪籤數/],
+      ['在職股不足 2 個', (c) => { c.units.forEach((u, i) => { u.active = i === 0; }); }, /少於 2 個/],
+      ['所有在職股同屬一庭', (c) => {
+        c.units.forEach((u, i) => { u.active = i < 2; });
+        c.units[1].courtId = c.units[0].courtId;
+      }, /同一庭/],
+      ['沒有啟用的案類', (c) => { c.caseTypes.forEach((t) => { t.active = false; }); }, /沒有任何啟用的案類/],
+      ['補籤門檻不小於總籤數', (c) => { c.rules.refillWhenRemainingAtMost = 99; }, /無限補籤/],
+      ['drand roundOffset 為 0', (c) => { c.drand.roundOffset = 0; }, /承諾階段/],
+      ['要求一致的端點數超過端點總數', (c) => { c.drand.minAgreeingEndpoints = 99; }, /永遠無法進行/],
+      ['在職股所屬的庭已停用', (c) => { c.courts[0].active = false; }, /已停用/],
+    ];
+
+    for (const [name, mutate, pattern] of cases) {
+      const c = clone();
+      mutate(c);
+      const problems = validateConfig(c);
+      assert.ok(problems.length > 0, `未偵測到問題：${name}`);
       assert.ok(
-        ['blue', 'green', 'amber', 'purple'].includes(c.color),
-        `庭別 ${c.id} 的顏色 ${c.color} 不在樣式表支援的範圍內（會導致標籤失去顏色與圖示）`
+        problems.some((p) => pattern.test(p)),
+        `「${name}」的錯誤訊息不符預期：${problems.join('；')}`
       );
     }
-  });
-
-  test('股別：ID 唯一、order 唯一、所屬庭存在、每輪籤數為正整數', () => {
-    const courtIds = new Set(config.courts.map((c) => c.id));
-    const ids = new Set();
-    const orders = new Set();
-    for (const u of config.units) {
-      assert.ok(u.id && typeof u.id === 'string', `股別缺少 id：${JSON.stringify(u)}`);
-      assert.ok(!ids.has(u.id), `股別 ID 重複：${u.id}`);
-      ids.add(u.id);
-      assert.ok(u.name, `股別 ${u.id} 缺少名稱`);
-      assert.ok(courtIds.has(u.courtId), `股別 ${u.id} 所屬的庭 ${u.courtId} 不存在`);
-      assert.ok(Number.isInteger(u.order), `股別 ${u.id} 的 order 必須為整數`);
-      assert.ok(!orders.has(u.order), `股別 order 重複：${u.order}（會使籤筒排序不確定）`);
-      orders.add(u.order);
-      const n = u.ticketsPerCycle ?? 1;
-      assert.ok(Number.isInteger(n) && n >= 1, `股別 ${u.id} 的每輪籤數必須為 1 以上的整數`);
-    }
-  });
-
-  test('股別名稱不重複（避免抽籤結果無法辨識是哪一股）', () => {
-    const names = config.units.filter((u) => u.active).map((u) => u.name);
-    assert.equal(new Set(names).size, names.length, `在職股別有重複名稱：${names.join('、')}`);
-  });
-
-  test('至少有 2 個在職股，且至少分屬 2 個庭', () => {
-    const active = activeUnits(config);
-    assert.ok(active.length >= 2, '在職股少於 2 個，無法進行有意義的抽籤');
-    const courts = new Set(active.map((u) => courtIdOf(config, u.id)));
-    assert.ok(
-      courts.size >= 2,
-      '所有在職股都屬於同一庭，「剩 2 支同庭即補籤」的規則會使籤筒無限補籤'
-    );
-  });
-
-  test('案類：ID 唯一，且至少有一個啟用', () => {
-    const ids = new Set();
-    for (const c of config.caseTypes) {
-      assert.ok(!ids.has(c.id), `案類 ID 重複：${c.id}`);
-      ids.add(c.id);
-    }
-    assert.ok(config.caseTypes.some((c) => c.active), '沒有任何啟用的案類');
-  });
-
-  test('規則參數在合理範圍內', () => {
-    const r = config.rules;
-    assert.ok(Number.isInteger(r.refillWhenRemainingAtMost) && r.refillWhenRemainingAtMost >= 0);
-    assert.ok(Number.isInteger(r.maxOffsetPerCase) && r.maxOffsetPerCase >= 1);
-    assert.ok(Number.isInteger(r.maxRefillLoops) && r.maxRefillLoops >= 1);
-    assert.ok(
-      r.refillWhenRemainingAtMost < activeUnits(config).length,
-      '補籤門檻不得大於或等於在職股的總籤數，否則會無限補籤'
-    );
   });
 
   test('可用正式設定建立籤筒，且籤數與排序正確', () => {
