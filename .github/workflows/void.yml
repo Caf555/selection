@@ -1,0 +1,66 @@
+# 作廢抽籤並回復籤筒
+# SPEC.md §7.4
+#
+# 只能作廢該籤筒最近一筆、且其後籤筒未再變動的紀錄。
+# 若已有後續抽籤，系統會拒絕並要求由最新一筆往回逐筆處理——
+# 否則回復的會是錯誤的籤筒狀態。
+#
+# 原抽籤紀錄一律保留並標示為已作廢，不會從歷史中移除。
+
+name: 作廢抽籤
+
+on:
+  workflow_dispatch:
+    inputs:
+      record_id:
+        description: "要作廢的紀錄編號（例如 R-000002）"
+        required: true
+        type: string
+      reason:
+        description: "作廢理由（必填，會公開）"
+        required: true
+        type: string
+
+concurrency:
+  group: lottery
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  void:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      ACTOR: ${{ github.actor }}
+      RECORD_ID: ${{ inputs.record_id }}
+      REASON: ${{ inputs.reason }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+
+      - name: 演算法自我測試
+        run: node --test engine/test/operations.test.mjs engine/test/authorize.test.mjs
+
+      - name: 設定 git 身分
+        run: |
+          git config user.name "court-lottery[bot]"
+          git config user.email "court-lottery@users.noreply.github.com"
+
+      - name: 作廢並回復籤筒
+        run: node engine/run-ops.mjs void
+
+      - name: 推送
+        run: |
+          git add data/
+          git commit -m "作廢：${{ inputs.record_id }}（${{ inputs.reason }}）"
+          git push

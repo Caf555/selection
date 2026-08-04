@@ -1,0 +1,94 @@
+# 更正紀錄
+# SPEC.md §7.2、§7.3
+#
+# 兩種模式界線分明，不可混用：
+#
+#   amend         更正案號或備註 —— 完全不動籤筒
+#   offset-amend  更正抵分數 —— 承辦股不變，只調整籤筒與欠籤
+#
+# 若整筆抽籤都不應存在（例如抽錯案類），請改用「作廢抽籤」。
+#
+# 原紀錄一律保留、絕不修改。修改原紀錄會破壞其雜湊而使雜湊鏈斷裂，
+# 那正是本系統用來偵測竄改的機制。
+
+name: 更正紀錄
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "更正方式：amend（案號／備註）或 offset-amend（抵分件數）"
+        required: true
+        default: amend
+        type: choice
+        options: [amend, offset-amend]
+      record_id:
+        description: "要更正的紀錄編號（例如 R-000002）"
+        required: true
+        type: string
+      reason:
+        description: "更正理由（必填，會公開）"
+        required: true
+        type: string
+      new_case_no:
+        description: "更正後的案號（僅 amend 模式；不改則留空）"
+        required: false
+        default: ""
+        type: string
+      new_note:
+        description: "更正後的備註（僅 amend 模式；不改則留空）"
+        required: false
+        default: ""
+        type: string
+      new_offset_count:
+        description: "更正後的抵分件數（僅 offset-amend 模式）"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: lottery
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  amend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      ACTOR: ${{ github.actor }}
+      RECORD_ID: ${{ inputs.record_id }}
+      REASON: ${{ inputs.reason }}
+      NEW_CASE_NO: ${{ inputs.new_case_no }}
+      NEW_NOTE: ${{ inputs.new_note }}
+      NEW_OFFSET_COUNT: ${{ inputs.new_offset_count }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+
+      - name: 演算法自我測試
+        run: node --test engine/test/operations.test.mjs engine/test/authorize.test.mjs
+
+      - name: 設定 git 身分
+        run: |
+          git config user.name "court-lottery[bot]"
+          git config user.email "court-lottery@users.noreply.github.com"
+
+      - name: 執行更正
+        run: node engine/run-ops.mjs ${{ inputs.mode }}
+
+      - name: 推送
+        run: |
+          git add data/
+          git commit -m "${{ inputs.mode }}：${{ inputs.record_id }}（${{ inputs.reason }}）"
+          git push
