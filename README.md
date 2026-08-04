@@ -28,10 +28,21 @@
 ### 上線前必須完成的 repo 設定
 
 1. **保護 main 分支**
-   Settings → Rules → Rulesets → New branch ruleset，目標 `main`：
-   - 勾選 Restrict updates、Block force pushes、Restrict deletions
-   - Bypass list 只加入 `court-lottery` 的 GitHub Actions
-   目的：即使有人取得 Write 權限，仍無法直接推送資料檔。
+   Settings → Rules → Rulesets → New ruleset → New branch ruleset
+   - Enforcement status：`Active`
+   - Target branches：`Include default branch`
+   - Bypass list：**留空**
+   - Rules 只勾：☑ `Block force pushes`　☑ `Restrict deletions`
+   - **不要勾** `Restrict updates` 與 `Require a pull request before merging`
+
+   ⚠ `github-actions[bot]` / `GITHUB_TOKEN` **無法加入 bypass list**
+   （官方文件列出的可 bypass 對象只有 repository admin、maintain/write 角色、
+   team、GitHub App、Dependabot）。若啟用 `Restrict updates`，被擋住的會是
+   抽籤工作流程本身，抽籤將直接失敗。
+
+   ⚠ **在單人持有的個人帳號 repo 上，分支保護綁不住擁有者。**
+   擁有者同時是 ruleset 的管理者，隨時可自行 bypass 或停用規則。
+   詳見 SPEC §8.2 的限制說明。
 
 2. **允許 Actions 推送**
    Settings → Actions → General → Workflow permissions → Read and write permissions。

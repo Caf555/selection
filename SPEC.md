@@ -700,12 +700,40 @@ pick(n, itemSeq):                       # n = drawable 的支數
 因為沒有 `Contents: write`，該權杖**在技術上完全無法修改任何資料檔**，只能發動抽籤流程。權杖存於該操作者自己電腦的瀏覽器 localStorage，不經任何第三方伺服器。
 
 **第 2 層 — 分支保護規則（Ruleset）**
-對 `main` 分支設定：
-- 限制可推送者：僅 `github-actions[bot]`（bypass list 僅列此一項）
-- 禁止 force push
-- 禁止刪除分支
 
-即使某人取得了 Write 權限，仍無法直接推送資料檔。
+對 `main` 分支設定：
+- 禁止 force push（`Block force pushes`）
+- 禁止刪除分支（`Restrict deletions`）
+
+⚠ **不可啟用 `Restrict updates`。** GitHub 官方文件所列可加入 bypass list 的對象僅有
+repository admin／organization owner、maintain 或 write 角色、team、GitHub App、Dependabot，
+**`github-actions[bot]` 與 `GITHUB_TOKEN` 不在其中**。啟用後被擋住的會是抽籤工作流程本身。
+
+若要達成「只有工作流程能寫入資料檔」，需改用下列其中一種，並同時啟用 `Restrict updates`：
+- **Deploy key**：產生 SSH 金鑰對，公鑰設為 repo 的 write deploy key、私鑰存為 Actions Secret，
+  將該 deploy key 加入 bypass list，工作流程改以 SSH 推送。
+- **專屬 GitHub App**：安裝於本 repo 並加入 bypass list，工作流程以 App token 推送。
+
+### 8.2.1 單人持有個人帳號時的重大限制
+
+上述四層防護是以「repo 擁有者 ≠ 抽籤操作者」為前提設計的。
+**若 repo 建於個人帳號且由同一人持有並操作，第 1～3 層對該擁有者全部失效**：
+
+| 層 | 對第三人 | 對擁有者本人 |
+|---|---|---|
+| 1. 權杖僅具 Actions 權限 | 有效 | 無效（可自本機直接推送） |
+| 2. 分支保護 | 有效 | **無效（擁有者即規則的管理者，可自行 bypass 或停用）** |
+| 3. `operators.json` 允許清單 | 有效 | 無效（可自行修改） |
+| 4. 公開且可驗證的軌跡 | 有效 | **有效** |
+
+因此在單人架構下，真正的保證來自**第 4 層與雜湊鏈、每日稽核**——這些不論由誰推送都成立：
+任何對 `data/` 的手動修改都會使雜湊鏈斷裂、稽核失敗並自動開 issue 告警。
+
+**但第 4 層要真正生效，repo 必須公開**，使外部第三人握有可比對的副本；
+否則「歷史被改寫」將無人能在外部察覺。這使得 §15 的 A-04（案號公開與否）
+不只是隱私取捨，而是**整套信任模型能否成立的前提**。
+
+若日後需要制度上的權責分離，應將 repo 移至 Organization，並使抽籤操作者不具 owner 身分。
 
 **第 3 層 — 允許清單比對**
 每個 workflow 的第一個步驟即比對 `github.actor` 是否存在於 `data/operators.json` 且在有效期內、角色足夠。不符合者立即中止，並寫入一筆公開的 `DENIED` 紀錄。撤銷某人權限只需修改此清單，**不需要更換任何共用密碼，也不影響其他人**。
@@ -1042,7 +1070,7 @@ pick(n, itemSeq):                       # n = drawable 的支數
 | A-01 | 4 庭與 8 股的**正式名稱**與隸屬關係 | 以刑一～刑四、忠孝仁愛信義和平為範例 |
 | A-02 | 抽籤操作者的**人數與名單** | 暫定 1 主要 + 1 備援，介面已支援多人 |
 | A-03 | repo 建立於**機關 Organization** 或個人帳號之下 | 建議 Organization，便於人員異動時交接 |
-| A-04 | **案號公開**於網際網路是否妥適，或應改為部分遮蔽（如僅顯示末三碼） | 暫定完整公開 |
+| A-04 | **案號公開**於網際網路是否妥適，或應改為部分遮蔽（如僅顯示末三碼）。<br>⚠ 此項不只是隱私取捨：repo 若不公開，第 4 層防護失效，<br>單人架構下將無任何機制能約束擁有者（見 §8.2.1） | 暫定完整公開 |
 | A-05 | LINE 推播是否**包含案號** | 暫定包含，可一鍵關閉 |
 | A-06 | 重抽時原籤**是否放回**（`redrawReturnsTicket`） | 暫定放回 |
 | A-07 | 抵分數的**上限** | 暫定 10 |
