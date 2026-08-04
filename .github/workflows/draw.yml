@@ -1,0 +1,129 @@
+# 抽籤
+# SPEC.md §4.2、§11.1
+#
+# 兩階段承諾—開籤，中間夾一次推送。承諾必須在目標輪次的亂數產生之前
+# 進入 git 歷史，否則無法證明抽籤標的是在結果出現前就固定的。
+#
+# 唯一能寫入 data/ 的路徑就是這個工作流程。操作者的個人權杖僅有
+# Actions 權限、沒有 Contents 權限，因此在技術上無法直接修改任何資料檔。
+
+name: 抽籤
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_type:
+        description: "案類"
+        required: true
+        type: choice
+        options: [jinsu, jinzhongsu]
+      case_nos:
+        description: "案號（每行一件，可一次多件）"
+        required: true
+        type: string
+      offset_count:
+        description: "抵分件數（一般案件填 1；重大案件抵 3 件就填 3）"
+        required: true
+        default: "1"
+        type: string
+      offset_map:
+        description: '抵分範圍（留空＝僅本案類。跨案類範例：{"jinzhongsu":2,"jinsu":1}）'
+        required: false
+        default: ""
+        type: string
+      excluded:
+        description: "本次應迴避的股別 ID，以逗號分隔（例如 un-01,un-03）"
+        required: false
+        default: ""
+        type: string
+      exclude_reason:
+        description: "迴避事由"
+        required: false
+        default: ""
+        type: string
+      note:
+        description: "備註（嚴禁填入當事人姓名等個資）"
+        required: false
+        default: ""
+        type: string
+
+# 抽籤必須嚴格循序，不得並行；並行會使兩批同時以同一個籤筒狀態開籤。
+concurrency:
+  group: lottery
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      ACTOR: ${{ github.actor }}
+      CASE_TYPE: ${{ inputs.case_type }}
+      CASE_NOS: ${{ inputs.case_nos }}
+      OFFSET_COUNT: ${{ inputs.offset_count }}
+      OFFSET_MAP: ${{ inputs.offset_map }}
+      EXCLUDED: ${{ inputs.excluded }}
+      EXCLUDE_REASON: ${{ inputs.exclude_reason }}
+      NOTE: ${{ inputs.note }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      - name: 取出程式碼
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+
+      # 抽籤路徑刻意不執行 npm install：
+      # 引擎零第三方相依，少一個可被動手腳的環節（SPEC §4.0）
+      - name: 演算法自我測試
+        run: node --test engine/test/offset.test.mjs engine/test/refill.test.mjs
+
+      - name: 設定 git 身分
+        run: |
+          git config user.name "court-lottery[bot]"
+          git config user.email "court-lottery@users.noreply.github.com"
+
+      - name: 授權、個資與完整性檢查
+        env:
+          REQUIRED_ROLE: DRAW_OPERATOR
+        run: node engine/run-draw.mjs authorize
+
+      # 授權失敗時 DENIED 紀錄已寫入，仍須推送以留下公開痕跡
+      - name: 推送 DENIED 紀錄
+        if: failure()
+        run: |
+          if ! git diff --quiet -- data/; then
+            git add data/
+            git commit -m "DENIED: ${{ github.actor }} 嘗試抽籤但未通過檢查"
+            git push
+          fi
+
+      # ── 階段一：承諾 ──────────────────────────────────────
+      - name: 建立承諾
+        id: commit_phase
+        run: node engine/run-draw.mjs commit
+
+      - name: 推送承諾（此步驟失敗即中止，絕不可略過而直接開籤）
+        run: |
+          git add data/pending/
+          git commit -m "承諾：批次 ${{ steps.commit_phase.outputs.batch_id }}，目標 drand 輪次 ${{ steps.commit_phase.outputs.target_round }}"
+          git push
+
+      # ── 階段二：開籤 ──────────────────────────────────────
+      - name: 等待目標輪次並開籤
+        env:
+          BATCH_ID: ${{ steps.commit_phase.outputs.batch_id }}
+        run: node engine/run-draw.mjs reveal
+
+      - name: 推送抽籤結果
+        run: |
+          git add data/
+          git commit -m "抽籤：批次 ${{ steps.commit_phase.outputs.batch_id }}（drand 第 ${{ steps.commit_phase.outputs.target_round }} 輪）"
+          git push

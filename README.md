@@ -16,13 +16,40 @@
 |---|---|---|
 | P1 | 資料模型、抽籤引擎、單元測試 | **已完成** |
 | P3 | 公開看板、歷史查詢、驗證頁 | **已完成** |
-| P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | 未開始 |
+| P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | **程式已完成**，待完成 repo 設定 |
 | P4 | 抽籤台、管理頁、列印版面 | 未開始 |
 | P5 | LINE 推播、QR code、本機同步腳本 | 未開始 |
 | P6 | 平行試辦、教育訓練、正式上線 | 未開始 |
 
-**目前尚未可用於正式分案**：正式抽籤必須經 GitHub Actions 使用 drand 公共亂數，
-該部分屬 P2，尚未實作。本機 CLI 刻意不提供正式抽籤指令，以免產生繞過該流程的途徑。
+**目前尚未可用於正式分案**：抽籤工作流程的程式已完成，但需先完成下列 repo 設定
+（這些必須由帳號擁有者本人操作）。本機 CLI 刻意不提供正式抽籤指令，以免產生
+繞過 Actions 流程的途徑。
+
+### 上線前必須完成的 repo 設定
+
+1. **保護 main 分支**
+   Settings → Rules → Rulesets → New branch ruleset，目標 `main`：
+   - 勾選 Restrict updates、Block force pushes、Restrict deletions
+   - Bypass list 只加入 `court-lottery` 的 GitHub Actions
+   目的：即使有人取得 Write 權限，仍無法直接推送資料檔。
+
+2. **允許 Actions 推送**
+   Settings → Actions → General → Workflow permissions → Read and write permissions。
+
+3. **抽籤操作者的個人權杖**（每位操作者各自申請，不共用）
+   Settings → Developer settings → Personal access tokens → Fine-grained tokens：
+   - Repository access：僅此 repo
+   - Permissions：**只勾 `Actions: Read and write`**
+   - 有效期限建議 90 天
+
+   關鍵在於**不給 `Contents: write`** —— 持有該權杖的人只能發動抽籤，
+   在技術上無法修改任何一筆資料。撤銷某人只需在 `data/operators.json`
+   填入 `validTo`，不必更換任何共用密碼，也不影響其他人。
+
+4. **GitHub Pages**（公開看板）
+   ⚠ 免費個人帳號的 Pages **只支援公開 repo**。目前 repo 為私有，
+   看板無法對外發布，只能在本機以 `node tools/serve.mjs` 檢視。
+   轉為公開前須先確認 SPEC §15 的 A-04（案號是否適合完整公開）。
 
 ---
 

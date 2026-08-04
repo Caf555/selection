@@ -12,5 +12,8 @@
     "test:spec36": "node --test --test-name-pattern=\"SPEC-3.6\" engine/test/offset.test.mjs",
     "lottery": "node engine/cli.mjs"
   },
-  "_note": "刻意不使用任何第三方相依套件（SPEC §5.3），以避免供應鏈風險並確保長期可維護。"
+  "_note": "刻意不使用任何第三方相依套件（SPEC §5.3），以避免供應鏈風險並確保長期可維護。",
+  "devDependencies": {
+    "@noble/curves": "^2.2.0"
+  }
 }
