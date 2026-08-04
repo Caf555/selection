@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "_note": "抽籤授權清單。撤銷授權請填入 validTo，不要刪除該筆，以保留稽核紀錄。待 SPEC §15 A-02 確認實際名單。",
+  "operators": []
+}

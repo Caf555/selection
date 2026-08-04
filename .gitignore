@@ -1,0 +1,17 @@
+node_modules/
+npm-debug.log*
+
+# 本機同步輸出（本機備份，不進 repo）
+本機歷史/
+local-history/
+
+# 編輯器與作業系統
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 暫存
+*.tmp
+*.bak

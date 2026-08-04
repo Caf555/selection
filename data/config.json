@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-04T00:00:00+08:00",
+  "_note": "庭別與股別名稱為範例值，待 SPEC §15 A-01 確認後修改",
+
+  "courts": [
+    { "id": "ct-01", "name": "刑事第一庭", "shortName": "刑一", "order": 1, "active": true, "color": "blue" },
+    { "id": "ct-02", "name": "刑事第二庭", "shortName": "刑二", "order": 2, "active": true, "color": "green" },
+    { "id": "ct-03", "name": "刑事第三庭", "shortName": "刑三", "order": 3, "active": true, "color": "amber" },
+    { "id": "ct-04", "name": "刑事第四庭", "shortName": "刑四", "order": 4, "active": true, "color": "purple" }
+  ],
+
+  "units": [
+    { "id": "un-01", "name": "忠股", "courtId": "ct-01", "order": 1, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-02", "name": "孝股", "courtId": "ct-01", "order": 2, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-03", "name": "仁股", "courtId": "ct-02", "order": 3, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-04", "name": "愛股", "courtId": "ct-02", "order": 4, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-05", "name": "信股", "courtId": "ct-03", "order": 5, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-06", "name": "義股", "courtId": "ct-03", "order": 6, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-07", "name": "和股", "courtId": "ct-04", "order": 7, "active": true, "ticketsPerCycle": 1, "note": "" },
+    { "id": "un-08", "name": "平股", "courtId": "ct-04", "order": 8, "active": true, "ticketsPerCycle": 1, "note": "" }
+  ],
+
+  "caseTypes": [
+    { "id": "jinsu", "name": "金訴", "order": 1, "active": true },
+    { "id": "jinzhongsu", "name": "金重訴", "order": 2, "active": true }
+  ],
+
+  "rules": {
+    "refillWhenRemainingAtMost": 1,
+    "refillWhenTwoTicketsSameCourt": true,
+    "defaultOffsetScope": "sameCaseType",
+    "maxOffsetPerCase": 10,
+    "maxRefillLoops": 20,
+    "redrawReturnsTicket": true
+  },
+
+  "drand": {
+    "_note": "P2 實作時依 drand 官方文件填入，禁止寫死於程式碼中",
+    "chainHash": "",
+    "publicKey": "",
+    "periodSeconds": 3,
+    "roundOffset": 2,
+    "endpoints": [
+      "https://api.drand.sh",
+      "https://api2.drand.sh",
+      "https://api3.drand.sh",
+      "https://drand.cloudflare.com"
+    ]
+  },
+
+  "ui": {
+    "baseFontPx": 28,
+    "resultFontPx": 128,
+    "animation": false,
+    "highContrast": true
+  },
+
+  "notify": {
+    "web": { "enabled": true },
+    "line": { "enabled": false, "includeCaseNo": true }
+  },
+
+  "privacy": {
+    "forbiddenFieldHints": ["當事人姓名", "身分證字號", "出生年月日", "住址", "電話"],
+    "warnOnPatterns": ["[A-Z][12][0-9]{8}"]
+  }
+}

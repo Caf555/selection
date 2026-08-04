@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "seq": 0,
+  "updatedAt": "2026-08-04T02:28:49.846Z",
+  "bins": {
+    "jinsu": {
+      "tickets": [
+        "un-01",
+        "un-02",
+        "un-03",
+        "un-04",
+        "un-05",
+        "un-06",
+        "un-07",
+        "un-08"
+      ],
+      "cycle": 1,
+      "carryOverSkips": {},
+      "lastRecordId": null
+    },
+    "jinzhongsu": {
+      "tickets": [
+        "un-01",
+        "un-02",
+        "un-03",
+        "un-04",
+        "un-05",
+        "un-06",
+        "un-07",
+        "un-08"
+      ],
+      "cycle": 1,
+      "carryOverSkips": {},
+      "lastRecordId": null
+    }
+  },
+  "prevStateHash": null,
+  "stateHash": "sha256:69c97288cdea620199906a0c1477290daeb972a0ee95d9d1d136309ee5246db9"
+}

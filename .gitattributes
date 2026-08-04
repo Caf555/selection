@@ -1,0 +1,10 @@
+# 全部文字檔一律以 LF 儲存於 repo。
+# 資料檔是本系統的唯一真實來源，且會由 Linux 上的 GitHub Actions 寫入、
+# 由 Windows 本機讀取。行尾若不一致會產生無意義的 diff，並使人工比對
+# 歷史紀錄時難以判斷內容是否真的變動過。
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.ico binary
