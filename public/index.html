@@ -109,16 +109,53 @@ try {
     </section>
     <section>
       <h2 class="sec">分享本頁</h2>
-      <div class="row">
-        <button class="btn" id="copy" type="button">複製本頁網址</button>
-        <span id="copied" role="status"></span>
+      <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:1.4rem;align-items:start">
+        <div id="qr" style="width:min(260px,40vw)"></div>
+        <div>
+          <p style="margin-top:0">
+            本頁免登入即可閱覽。用手機掃描左側 QR code，或直接把網址傳給任何人。
+          </p>
+          <div class="row">
+            <button class="btn" id="copy" type="button">複製本頁網址</button>
+            <button class="btn" id="printqr" type="button">列印 QR code</button>
+            <span id="copied" role="status"></span>
+          </div>
+        </div>
       </div>
-      <p class="note" style="margin-top:0.8rem">
-        本頁免登入即可閱覽，可直接把網址傳給任何人。
-        列印用的 QR code 與 LINE 群組自動推播屬第五階段功能，尚未實作。
-      </p>
     </section>
   `;
+
+  /* QR code：在瀏覽器本機產生，不對外部服務發出任何請求 */
+  try {
+    const { toSvg } = await import('./js/qrcode.mjs');
+    const shareUrl = location.origin + location.pathname;
+    document.getElementById('qr').innerHTML =
+      toSvg(shareUrl, { level: 'M', scale: 1, margin: 4, title: '公開看板網址' })
+        .replace(/width="\d+" height="\d+"/, 'width="100%" height="auto"');
+
+    document.getElementById('printqr').addEventListener('click', () => {
+      const w = window.open('', '_blank');
+      if (!w) return alert('瀏覽器阻擋了新視窗，請允許彈出視窗後再試');
+      w.document.write(
+        `<!DOCTYPE html><html lang="zh-Hant-TW"><head><meta charset="utf-8">` +
+        `<title>公開看板 QR code</title><style>` +
+        `body{font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;text-align:center;padding:24mm}` +
+        `h1{font-size:24pt;letter-spacing:.2em}p{font-size:13pt;word-break:break-all}` +
+        `svg{width:110mm;height:110mm}</style></head><body>` +
+        `<h1>案件分案抽籤系統</h1><h2 style="font-size:16pt;font-weight:500">公開看板</h2>` +
+        toSvg(shareUrl, { level: 'M', scale: 1, margin: 4, title: '公開看板網址' }) +
+        `<p>${esc(shareUrl)}</p>` +
+        `<p style="font-size:11pt;color:#555">以手機相機掃描即可查閱籤筒現況與全部抽籤紀錄，免登入。</p>` +
+        `</body></html>`
+      );
+      w.document.close();
+      w.focus();
+      w.print();
+    });
+  } catch (e) {
+    document.getElementById('qr').innerHTML =
+      `<div class="note warn">QR code 產生失敗：${esc(e.message)}</div>`;
+  }
 
   document.getElementById('copy').addEventListener('click', async () => {
     const out = document.getElementById('copied');

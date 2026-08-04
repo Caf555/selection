@@ -18,7 +18,8 @@
 | P3 | 公開看板、歷史查詢、驗證頁 | **已完成** |
 | P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | **程式已完成**，待完成 repo 設定 |
 | P4 | 抽籤台、列印紀錄表 | **已完成並實機驗證** |
-| P5 | LINE 推播、QR code、本機同步腳本 | 未開始 |
+| P5 | QR code、本機同步腳本 | **已完成** |
+| P5b | LINE 群組推播 | 程式已完成，待你申請帳號並設定 Secret |
 | P6 | 平行試辦、教育訓練、正式上線 | 未開始 |
 
 **目前尚未可用於正式分案**：抽籤工作流程的程式已完成，但需先完成下列 repo 設定
@@ -184,6 +185,50 @@ npm run test:spec36
 
 測試項目編號對應 SPEC §14。P1 涵蓋演算法、更正作廢、亂數分布與雜湊鏈；
 drand 相關（#28、#29）與權限相關（#32～#34）屬 P2。
+
+---
+
+## 本機歷史同步
+
+把線上紀錄拉回本機備份，**先驗證雜湊鏈完整性，通過後才輸出**：
+
+```bash
+node tools/sync-local.mjs
+```
+
+Windows 使用者可改用 PowerShell 版（供「工作排程器」每日自動執行）：
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\sync-local.ps1
+```
+
+輸出至 `本機歷史/`：CSV（UTF-8 BOM，Excel 可直接開）、JSONL 原始備份、
+可列印的 HTML。每次同步保留獨立檔案，形成多重備份。
+
+⚠ 驗證不通過時**不輸出任何檔案**。若把可能遭竄改的資料也寫成備份，
+日後將無從分辨哪一份可信。
+
+---
+
+## LINE 群組推播（尚未啟用）
+
+程式已完成，但需要你先完成下列外部設定。**LINE Notify 已於 2025-03-31
+終止服務**，本系統改用 LINE Messaging API。
+
+1. 申請 **LINE 官方帳號**（LINE Official Account Manager）
+2. 至 **LINE Developers** 建立 Messaging API channel，取得 **Channel Access Token**
+3. 於本 repo 設定 Actions Secret（Settings → Secrets and variables → Actions）：
+   - `LINE_CHANNEL_TOKEN`：上一步取得的權杖
+   - `LINE_GROUP_IDS`：目標群組 ID，多個以逗號分隔
+4. 將官方帳號加入目標群組，透過 webhook 取得 `groupId`
+5. 把 `data/config.json` 的 `notify.line.enabled` 改為 `true`
+
+若不宜於通知中揭露案號，將 `notify.line.includeCaseNo` 設為 `false`，
+系統只會推播「金訴 3 件」這類摘要與看板網址。
+
+**推播失敗不會影響抽籤。** 結果在推播之前就已寫入並推送完成——若因為
+LINE 額度用盡或網路不通就讓工作流程失敗，操作者會以為抽籤沒成功而重抽，
+那會再消耗一支籤。
 
 ---
 

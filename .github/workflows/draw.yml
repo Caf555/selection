@@ -119,9 +119,13 @@ jobs:
           git push
 
       # ── 階段二：開籤 ──────────────────────────────────────
+      # LINE 推播在開籤步驟末端執行。推播失敗不會使本步驟失敗——
+      # 抽籤結果此時已寫入，通知的問題不該演變成分案的問題。
       - name: 等待目標輪次並開籤
         env:
           BATCH_ID: ${{ steps.commit_phase.outputs.batch_id }}
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_GROUP_IDS: ${{ secrets.LINE_GROUP_IDS }}
         run: node engine/run-draw.mjs reveal
 
       - name: 推送抽籤結果

@@ -135,11 +135,25 @@ try {
           <code>${esc(verifyUrl)}</code>
         </div>
 
+        <div id="qrbox" style="text-align:center;margin-top:1rem"></div>
+
         <div class="sign">
           <div>抽籤人簽章</div>
           <div>監交人簽章</div>
         </div>
       </div>`;
+
+    /* 驗證網址的 QR code。本機產生，附卷後任何人以手機即可查證。 */
+    try {
+      const { toSvg } = await import('./js/qrcode.mjs');
+      document.getElementById('qrbox').innerHTML =
+        `<div style="display:inline-block;text-align:center">` +
+        toSvg(verifyUrl, { level: 'Q', scale: 1, margin: 4, title: '驗證網址' })
+          .replace(/width="\d+" height="\d+"/, 'width="34mm" height="34mm"') +
+        `<div style="font-size:var(--fs-small);color:var(--text-muted)">掃描以驗證</div></div>`;
+    } catch {
+      document.getElementById('qrbox').remove();
+    }
   }
 } catch (err) {
   fail(app, err);

@@ -27,6 +27,7 @@ import {
 import { latestRound, targetRoundFor, fetchRound, waitForRound } from './drand.mjs';
 import { buildCommitPayload, commitPayloadHash, executeReveal } from './commit.mjs';
 import { buildDrawRecord, buildAuditRecord, sealRecord, makeBatchId } from './records.mjs';
+import { buildMessage, sendLine, lineCredentialsFromEnv } from './notify.mjs';
 import { LotteryError } from './errors.mjs';
 
 const PENDING_DIR = join(DATA_DIR, 'pending');
@@ -328,6 +329,32 @@ async function doReveal() {
   }
   say('');
   say('> 完整結果與驗證方式請見公開看板。');
+
+  // ── 通知（失敗不影響已完成的分案）────────────────────────
+  const records = loadHistory().filter((r) => r.batchId === batchId && r.type === 'DRAW');
+  const dashboardUrl = config.github?.owner
+    ? `https://${config.github.owner.toLowerCase()}.github.io/${config.github.repo}/`
+    : null;
+
+  const text = buildMessage({
+    config, records, dashboardUrl,
+    includeCaseNo: config.notify?.line?.includeCaseNo !== false,
+  });
+  const r = await sendLine({ config, text, ...lineCredentialsFromEnv() });
+
+  say('');
+  say('### 通知');
+  say('');
+  if (r.skipped) {
+    say(`- LINE 推播未執行：${r.problems.join('；')}`);
+  } else {
+    say(`- LINE 推播：成功 ${r.sent} 個群組${r.failed ? `，失敗 ${r.failed} 個` : ''}`);
+    for (const p of r.problems) say(`  - ⚠ ${p}`);
+    if (r.failed) {
+      say('');
+      say('> 推播失敗不影響抽籤結果——結果已寫入並推送完成，請至公開看板查閱。');
+    }
+  }
 }
 
 /* ── 進入點 ──────────────────────────────────────────────── */
