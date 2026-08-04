@@ -224,7 +224,7 @@ try {
           <summary style="font-size:1rem;font-weight:700;cursor:pointer;min-height:64px;display:flex;align-items:center">
             顯示本筆紀錄的正規化原文（雜湊即由此字串計算）
           </summary>
-          <pre style="overflow-x:auto;font-size:0.75rem;background:var(--surface);padding:0.8rem;border:3px solid var(--border);border-radius:10px;white-space:pre-wrap;word-break:break-all">${esc(canonicalizeOmitting(rec, ['recordHash']))}</pre>
+          <pre style="overflow-x:auto;font-size:var(--fs-small);background:var(--surface);padding:0.8rem;border:3px solid var(--border);border-radius:10px;white-space:pre-wrap;word-break:break-all">${esc(canonicalizeOmitting(rec, ['recordHash']))}</pre>
         </details>
       </section>`;
     out.scrollIntoView({ block: 'start' });

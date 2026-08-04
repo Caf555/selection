@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>抽籤台 — 案件分案抽籤系統</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="css/large-type.css">
+<style>
+  .steps { display:flex; flex-wrap:wrap; gap:0.4rem; margin-bottom:1.2rem; }
+  .steps span {
+    padding:0.15em 0.7em; border:3px solid var(--border); border-radius:999px;
+    font-size:0.85rem; font-weight:700; color:var(--text-muted);
+  }
+  .steps span.now { border-color:var(--text); color:var(--bg); background:var(--text); }
+  .steps span.done { border-color:var(--ok); color:var(--ok); }
+
+  .bigchoice { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:1rem; }
+  .bigchoice button {
+    font-family:inherit; font-size:clamp(2rem,7vw,3.2rem); font-weight:700;
+    padding:1.6rem 1rem; min-height:160px; letter-spacing:0.1em;
+    color:var(--text); background:var(--surface);
+    border:5px solid var(--border-strong); border-radius:var(--radius); cursor:pointer;
+  }
+  .bigchoice button:hover { background:var(--surface-2); }
+
+  .stepper { display:flex; align-items:center; gap:1rem; }
+  .stepper button {
+    font-family:inherit; font-size:2.4rem; font-weight:700; line-height:1;
+    width:88px; height:88px; color:var(--text); background:var(--surface);
+    border:4px solid var(--border-strong); border-radius:var(--radius); cursor:pointer;
+  }
+  .stepper .val { font-size:2.6rem; font-weight:700; min-width:4.5rem; text-align:center; }
+
+  textarea {
+    font-family:inherit; font-size:1.05rem; font-weight:500; line-height:1.7;
+    width:100%; min-height:200px; padding:0.6rem;
+    color:var(--text); background:var(--bg);
+    border:3px solid var(--border-strong); border-radius:var(--radius);
+  }
+
+  .checkgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:0.7rem; }
+  .checkgrid label {
+    display:flex; align-items:center; gap:0.7rem; margin:0; cursor:pointer;
+    padding:0.6rem 0.8rem; min-height:74px;
+    border:3px solid var(--border-strong); border-radius:var(--radius); background:var(--surface);
+  }
+  .checkgrid input { width:36px; height:36px; flex:none; accent-color:var(--accent); }
+  .checkgrid label:has(input:checked) { border-color:var(--danger); background:var(--danger-bg); }
+
+  .review { border:4px solid var(--border-strong); border-radius:var(--radius); overflow:hidden; }
+  .review dl { margin:0; }
+  .review div.r { display:grid; grid-template-columns:minmax(0,10rem) 1fr; gap:0.8rem;
+                  padding:0.7rem 0.9rem; border-bottom:2px solid var(--border); }
+  .review div.r:last-child { border-bottom:0; }
+  .review dt { font-weight:700; color:var(--text-muted); margin:0; }
+  .review dd { margin:0; font-weight:700; font-size:1.1rem; word-break:break-all; }
+
+  .go {
+    font-family:inherit; font-size:clamp(1.6rem,5vw,2.4rem); font-weight:700;
+    width:100%; min-height:120px; letter-spacing:0.1em;
+    color:#fff; background:#8e0f18; border:5px solid #5e0a10;
+    border-radius:var(--radius); cursor:pointer;
+  }
+  @media (prefers-color-scheme: dark) { .go { background:#a4131c; border-color:#ffb3b3; } }
+
+  .progress li { padding:0.5rem 0; border-bottom:2px solid var(--border); font-size:1rem; font-weight:700; }
+  .progress li.now { color:var(--accent); }
+  .progress li.done { color:var(--ok); }
+
+  .resultcard {
+    border:5px solid var(--border-strong); border-radius:var(--radius);
+    background:var(--surface); padding:1.2rem; margin-bottom:1rem;
+  }
+  .resultcard .who { font-size:clamp(2.4rem,10vw,5rem); font-weight:700; line-height:1.15; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>抽籤台</h1>
+    <div id="nav"></div>
+  </header>
+
+  <main id="app"><p class="empty">載入中…</p></main>
+
+  <footer class="site">
+    <p>抽籤結果由 GitHub Actions 在伺服器端產生，本頁只負責提出請求。
+       操作者無法預知結果，也無法看到結果後重抽——每一次請求都會留下公開紀錄。</p>
+  </footer>
+
+</div>
+
+<script type="module">
+import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
+import { courtBadge, nav, esc, fail } from './js/ui.mjs';
+import * as gh from './js/github.mjs';
+
+document.getElementById('nav').innerHTML = nav('draw.html');
+const app = document.getElementById('app');
+
+let config, state;
+const S = {
+  caseTypeId: null,
+  caseNos: [],
+  offsetCount: 1,
+  offsetBins: new Set(),
+  excluded: new Set(),
+  excludeReason: '',
+  note: '',
+};
+
+const STEP_NAMES = ['選案類', '輸入案號', '抵分', '迴避', '確認', '抽籤', '結果'];
+
+function chrome(stepIdx, inner) {
+  const steps = STEP_NAMES.map((n, i) =>
+    `<span class="${i === stepIdx ? 'now' : i < stepIdx ? 'done' : ''}">${i + 1}. ${n}</span>`
+  ).join('');
+  return `<div class="steps" aria-label="進度">${steps}</div>${inner}`;
+}
+
+function back(toStep, label = '上一步') {
+  return `<button class="btn" type="button" data-back="${toStep}">← ${label}</button>`;
+}
+
+/* ── 步驟 0：權杖 ─────────────────────────────────────────── */
+
+function renderToken(msg = '') {
+  app.innerHTML = `
+    <section>
+      <h2 class="sec">首次使用：貼上你的個人權杖</h2>
+      <p class="note">
+        權杖只會存在<strong>這台電腦的瀏覽器</strong>裡，不會傳給任何第三方。<br><br>
+        申請方式：GitHub → Settings → Developer settings → Personal access tokens →
+        Fine-grained tokens → Generate new token<br>
+        ・Repository access：只選 <code>${esc(config.github.owner)}/${esc(config.github.repo)}</code><br>
+        ・Permissions：<strong>只勾 Actions: Read and write</strong><br><br>
+        刻意不要給 Contents 權限——這樣即使權杖外流，對方也只能發動抽籤，
+        <strong>改不了任何一筆紀錄</strong>。
+      </p>
+      ${msg ? `<div class="note warn" role="alert">${esc(msg)}</div>` : ''}
+      <div style="margin-top:1.2rem">
+        <label for="tok">個人權杖</label>
+        <input type="password" id="tok" autocomplete="off" spellcheck="false"
+               placeholder="github_pat_… 或 ghp_…" style="min-height:74px">
+      </div>
+      <div class="row" style="margin-top:1rem">
+        <button class="btn" id="savetok" type="button">驗證並儲存</button>
+      </div>
+    </section>`;
+
+  document.getElementById('savetok').addEventListener('click', async () => {
+    const el = document.getElementById('tok');
+    const t = el.value.trim();
+    if (!t) return renderToken('請先貼上權杖');
+    el.value = '';
+    app.innerHTML = `<p class="empty">驗證中…</p>`;
+    try {
+      const v = await gh.verifyToken(config, t);
+      gh.setToken(t);
+      step1(v.login);
+    } catch (e) {
+      renderToken(e.message);
+    }
+  });
+}
+
+/* ── 步驟 1：選案類 ───────────────────────────────────────── */
+
+function step1(login = null) {
+  const types = config.caseTypes.filter((c) => c.active).sort((a, b) => a.order - b.order);
+  app.innerHTML = chrome(0, `
+    <section>
+      <div class="row" style="font-size:0.9rem;color:var(--text-muted);margin-bottom:0.8rem">
+        <span>已授權${login ? `：${esc(login)}` : ''}</span>
+        <button class="btn" id="forget" type="button" style="min-height:48px;font-size:0.85rem">清除本機權杖</button>
+      </div>
+      <h2 class="sec">這件案子是哪一種？</h2>
+      <div class="bigchoice">
+        ${types.map((c) => `<button type="button" data-ct="${esc(c.id)}">${esc(c.name)}</button>`).join('')}
+      </div>
+    </section>`);
+
+  app.querySelectorAll('[data-ct]').forEach((b) =>
+    b.addEventListener('click', () => {
+      S.caseTypeId = b.dataset.ct;
+      S.offsetBins = new Set([S.caseTypeId]);
+      step2();
+    })
+  );
+  document.getElementById('forget').addEventListener('click', () => {
+    gh.clearToken();
+    renderToken('已清除。下次使用需重新貼上權杖。');
+  });
+}
+
+/* ── 步驟 2：案號 ─────────────────────────────────────────── */
+
+function step2() {
+  const ct = caseTypeOf(config, S.caseTypeId);
+  app.innerHTML = chrome(1, `
+    <section>
+      <h2 class="sec">${esc(ct.name)}　輸入案號</h2>
+      <p class="note warn">
+        <strong>嚴禁填入當事人姓名、身分證字號等個人資料。</strong>
+        本 repo 的內容公開，一旦寫入即無法收回。
+      </p>
+      <label for="nos" style="margin-top:1rem">案號（一行一件，可一次貼上多件）</label>
+      <textarea id="nos" spellcheck="false" placeholder="115金訴-031&#10;115金訴-032">${S.caseNos.join('\n')}</textarea>
+      <div id="cnt" style="font-weight:700;margin-top:0.4rem" role="status"></div>
+      <div class="row" style="margin-top:1rem">
+        ${back(1, '重選案類')}
+        <button class="btn" id="next" type="button">下一步 →</button>
+      </div>
+    </section>`);
+
+  const ta = document.getElementById('nos');
+  const cnt = document.getElementById('cnt');
+  const lines = () => ta.value.split('\n').map((s) => s.trim()).filter(Boolean);
+  const upd = () => { cnt.textContent = `共 ${lines().length} 件`; };
+  ta.addEventListener('input', upd);
+  upd();
+
+  document.getElementById('next').addEventListener('click', () => {
+    const ids = lines();
+    if (ids.length === 0) return alert('請至少輸入一個案號');
+    const dup = ids.filter((v, i) => ids.indexOf(v) !== i);
+    if (dup.length) return alert(`輸入內容有重複的案號：${[...new Set(dup)].join('、')}`);
+    const bad = ids.filter((v) => /[A-Z][12][0-9]{8}/.test(v));
+    if (bad.length) return alert(`下列內容疑似身分證字號，不得填入：${bad.join('、')}`);
+    S.caseNos = ids;
+    step3();
+  });
+}
+
+/* ── 步驟 3：抵分 ─────────────────────────────────────────── */
+
+function step3() {
+  const max = config.rules.maxOffsetPerCase ?? 10;
+  const types = config.caseTypes.filter((c) => c.active);
+  app.innerHTML = chrome(2, `
+    <section>
+      <h2 class="sec">抵分設定</h2>
+      <p class="note">
+        一般案件填 <strong>1</strong>。重大案件經核定抵 3 件就填 <strong>3</strong>，
+        代表本案算 1 件、該股另外少分 2 件。<br>
+        本批 ${S.caseNos.length} 件<strong>共用</strong>同一個抵分設定。
+      </p>
+      <div class="stepper" style="margin:1.2rem 0">
+        <button type="button" id="minus" aria-label="減少">−</button>
+        <span class="val" id="val">${S.offsetCount}</span>
+        <span style="font-size:1.3rem;font-weight:700">件</span>
+        <button type="button" id="plus" aria-label="增加">＋</button>
+      </div>
+      <div id="scope"></div>
+      <div class="row" style="margin-top:1.4rem">
+        ${back(2, '改案號')}
+        <button class="btn" id="next" type="button">下一步 →</button>
+      </div>
+    </section>`);
+
+  const val = document.getElementById('val');
+  const scope = document.getElementById('scope');
+
+  function renderScope() {
+    if (S.offsetCount <= 1) { scope.innerHTML = ''; return; }
+    scope.innerHTML = `
+      <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 0.6rem">抵分要扣在哪些籤筒？</h3>
+      <div class="checkgrid">
+        ${types.map((c) => `
+          <label><input type="checkbox" data-bin="${esc(c.id)}"
+            ${S.offsetBins.has(c.id) ? 'checked' : ''}
+            ${c.id === S.caseTypeId ? 'disabled' : ''}>
+            <span>${esc(c.name)}${c.id === S.caseTypeId ? '（本案類，必扣）' : ''}</span></label>`).join('')}
+      </div>`;
+    scope.querySelectorAll('[data-bin]').forEach((cb) =>
+      cb.addEventListener('change', () => {
+        if (cb.checked) S.offsetBins.add(cb.dataset.bin);
+        else S.offsetBins.delete(cb.dataset.bin);
+      })
+    );
+  }
+
+  const set = (n) => {
+    S.offsetCount = Math.min(max, Math.max(1, n));
+    val.textContent = S.offsetCount;
+    if (S.offsetCount <= 1) S.offsetBins = new Set([S.caseTypeId]);
+    renderScope();
+  };
+  document.getElementById('minus').addEventListener('click', () => set(S.offsetCount - 1));
+  document.getElementById('plus').addEventListener('click', () => set(S.offsetCount + 1));
+  renderScope();
+
+  document.getElementById('next').addEventListener('click', step4);
+}
+
+/* ── 步驟 4：迴避 ─────────────────────────────────────────── */
+
+function step4() {
+  const units = config.units.filter((u) => u.active).sort((a, b) => a.order - b.order);
+  app.innerHTML = chrome(3, `
+    <section>
+      <h2 class="sec">本次應迴避的股別</h2>
+      <p class="note">
+        沒有要迴避的話，<strong>什麼都不用勾</strong>，直接按下一步。<br>
+        被勾選的股本次不會抽中，但他的籤仍留在籤筒內，不影響輪分節奏。
+      </p>
+      <div class="checkgrid" style="margin-top:1.2rem">
+        ${units.map((u) => `
+          <label><input type="checkbox" data-u="${esc(u.id)}" ${S.excluded.has(u.id) ? 'checked' : ''}>
+            <span>${esc(u.name)}</span></label>`).join('')}
+      </div>
+      <div id="reasonbox" style="margin-top:1.2rem"></div>
+      <div class="row" style="margin-top:1.4rem">
+        ${back(3, '改抵分')}
+        <button class="btn" id="next" type="button">下一步 →</button>
+      </div>
+    </section>`);
+
+  const box = document.getElementById('reasonbox');
+  function renderReason() {
+    if (S.excluded.size === 0) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <label for="rsn">迴避事由（必填）</label>
+      <input type="text" id="rsn" value="${esc(S.excludeReason)}" placeholder="例如：承辦法官為前審裁判法官，依法自行迴避">`;
+    document.getElementById('rsn').addEventListener('input', (e) => { S.excludeReason = e.target.value; });
+  }
+
+  app.querySelectorAll('[data-u]').forEach((cb) =>
+    cb.addEventListener('change', () => {
+      if (cb.checked) S.excluded.add(cb.dataset.u);
+      else S.excluded.delete(cb.dataset.u);
+      renderReason();
+    })
+  );
+  renderReason();
+
+  document.getElementById('next').addEventListener('click', () => {
+    if (S.excluded.size > 0 && !S.excludeReason.trim()) return alert('有勾選迴避時必須填寫事由');
+    if (S.excluded.size >= config.units.filter((u) => u.active).length) {
+      return alert('所有股別都被迴避，無法抽籤');
+    }
+    step5();
+  });
+}
+
+/* ── 步驟 5：確認 ─────────────────────────────────────────── */
+
+function step5() {
+  const ct = caseTypeOf(config, S.caseTypeId);
+  const nameOf = (id) => config.units.find((u) => u.id === id)?.name ?? id;
+  const scopeText = S.offsetCount > 1
+    ? [...S.offsetBins].map((b) => caseTypeOf(config, b)?.name ?? b).join('、')
+    : '—';
+
+  app.innerHTML = chrome(4, `
+    <section>
+      <h2 class="sec">請確認以下內容</h2>
+      <div class="review">
+        <dl>
+          <div class="r"><dt>案類</dt><dd>${esc(ct.name)}</dd></div>
+          <div class="r"><dt>案件</dt><dd>${S.caseNos.length} 件<br>${S.caseNos.map(esc).join('<br>')}</dd></div>
+          <div class="r"><dt>抵分</dt><dd>${S.offsetCount} 件${S.offsetCount > 1 ? `<br>扣在：${esc(scopeText)}` : '（一般案件）'}</dd></div>
+          <div class="r"><dt>迴避</dt><dd>${S.excluded.size === 0 ? '無'
+            : [...S.excluded].map(nameOf).map(esc).join('、') + '<br>' + esc(S.excludeReason)}</dd></div>
+        </dl>
+      </div>
+
+      <div class="note warn" style="margin-top:1.2rem">
+        按下之後，系統會先把「要抽哪些案、用哪一輪公共亂數」寫進公開紀錄，
+        <strong>此時那一輪亂數還沒產生</strong>，任何人都無法預知結果。
+        接著才等亂數出現並抽出結果。<br><br>
+        <strong>送出後無法取消，也無法重抽。</strong>
+      </div>
+
+      <div style="margin-top:1.2rem">
+        <button class="go" id="go" type="button">確認抽籤</button>
+      </div>
+      <div class="row" style="margin-top:1rem">${back(4, '回上一步修改')}</div>
+    </section>`);
+
+  document.getElementById('go').addEventListener('click', run);
+}
+
+/* ── 步驟 6：執行 ─────────────────────────────────────────── */
+
+const PHASES = [
+  '送出抽籤請求',
+  '等待伺服器開始執行',
+  '寫入承諾（固定抽籤標的與亂數輪次）',
+  '等待公共亂數產生並抽籤',
+  '讀取抽籤結果',
+];
+
+function renderProgress(idx, extra = '') {
+  app.innerHTML = chrome(5, `
+    <section>
+      <h2 class="sec">抽籤進行中，請稍候</h2>
+      <ul class="progress" style="list-style:none;padding:0">
+        ${PHASES.map((p, i) => `
+          <li class="${i === idx ? 'now' : i < idx ? 'done' : ''}">
+            ${i < idx ? '✓' : i === idx ? '▶' : '　'}　${p}
+          </li>`).join('')}
+      </ul>
+      <p class="note" style="margin-top:1.2rem">
+        公共亂數每 3 秒產生一輪，整個流程通常在一分鐘內完成。<br>
+        <strong>請不要關閉或重新整理本頁。</strong>${extra}
+      </p>
+    </section>`);
+}
+
+async function run() {
+  const token = gh.getToken();
+  const offsetMap = S.offsetCount > 1
+    ? Object.fromEntries([...S.offsetBins].map((b) => [b, S.offsetCount - 1]))
+    : null;
+
+  const inputs = {
+    case_type: S.caseTypeId,
+    case_nos: S.caseNos.join('\n'),
+    offset_count: String(S.offsetCount),
+    offset_map: offsetMap ? JSON.stringify(offsetMap) : '',
+    excluded: [...S.excluded].join(','),
+    exclude_reason: S.excludeReason,
+    note: S.note,
+  };
+
+  const seqBefore = state.seq;
+  const t0 = Date.now();
+
+  try {
+    renderProgress(0);
+    await gh.dispatchDraw(config, token, inputs);
+
+    renderProgress(1);
+    const run = await gh.findRun(config, token, t0);
+    if (!run) throw new Error('已送出請求，但找不到對應的執行紀錄。請至 Actions 頁面查看。');
+
+    const url = gh.runUrl(config, run.id);
+    renderProgress(2, `<br><br>執行紀錄：<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+
+    const done = await gh.waitRun(config, token, run.id, {
+      onTick: (r) => {
+        if (r.status === 'in_progress') renderProgress(3, `<br><br>執行紀錄：<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+      },
+    });
+
+    if (done.conclusion !== 'success') {
+      return renderFailure(done, url);
+    }
+
+    renderProgress(4);
+    const history = await gh.fetchFreshHistory(config);
+    const fresh = history.filter((r) => r.type === 'DRAW' && r.seq > seqBefore);
+    renderResult(fresh, url);
+
+  } catch (e) {
+    app.innerHTML = chrome(5, `
+      <section>
+        <div class="note warn" role="alert">
+          <strong>抽籤未完成</strong><br><br>${esc(e.message)}
+        </div>
+        <p class="note" style="margin-top:1rem">
+          若請求已送出，籤筒可能已經變動。<strong>請先到公開看板確認實際狀態，不要直接重抽。</strong>
+        </p>
+        <div class="row" style="margin-top:1rem">
+          <a class="btn" href="index.html">前往公開看板</a>
+          <button class="btn" data-back="1" type="button">重新開始</button>
+        </div>
+      </section>`);
+    bindBack();
+  }
+}
+
+function renderFailure(run, url) {
+  app.innerHTML = chrome(5, `
+    <section>
+      <div class="note warn" role="alert">
+        <strong>抽籤未完成（${esc(run.conclusion)}）</strong><br><br>
+        系統在檢查階段擋下了這次請求，常見原因：授權未通過、案號重複、
+        輸入疑似個資、或資料完整性驗證失敗。<br><br>
+        詳細原因請看執行紀錄：<a href="${url}" target="_blank" rel="noopener">${url}</a>
+      </div>
+      <div class="row" style="margin-top:1rem">
+        <a class="btn" href="index.html">前往公開看板</a>
+        <button class="btn" data-back="1" type="button">重新開始</button>
+      </div>
+    </section>`);
+  bindBack();
+}
+
+/* ── 步驟 7：結果 ─────────────────────────────────────────── */
+
+function renderResult(records, url) {
+  const cards = records.map((r) => `
+    <div class="resultcard">
+      <div style="font-size:0.95rem;color:var(--text-muted);font-weight:700">${esc(r.caseNo)}</div>
+      <div class="who">${esc(r.resultUnitName)}</div>
+      <div class="row" style="font-size:1.1rem;font-weight:700">
+        ${courtBadge(config, r.resultCourtId)}
+        ${r.offsetCount > 1 ? `<span class="badge b-plain">抵 ${r.offsetCount} 件</span>` : ''}
+      </div>
+      <div style="font-size:0.9rem;color:var(--text-muted);margin-top:0.6rem">
+        ${esc(r.recordId)}　drand 第 ${esc(String(r.drand?.round ?? '—'))} 輪　${fmtTime(r.at)}
+      </div>
+      <div class="row" style="margin-top:0.8rem">
+        <a class="btn" href="print.html?id=${encodeURIComponent(r.recordId)}" target="_blank" rel="noopener">列印紀錄表</a>
+        <a class="btn" href="verify.html?id=${encodeURIComponent(r.recordId)}" target="_blank" rel="noopener">驗證</a>
+      </div>
+    </div>`).join('');
+
+  app.innerHTML = chrome(6, `
+    <section>
+      <h2 class="sec">抽籤完成</h2>
+      ${records.length === 0
+        ? `<div class="note warn">執行成功，但尚未讀到新紀錄（可能仍在同步）。請至公開看板確認。</div>`
+        : cards}
+      <p class="note" style="margin-top:1rem">
+        執行紀錄（公開可查）：<a href="${url}" target="_blank" rel="noopener">${url}</a>
+      </p>
+      <div class="row" style="margin-top:1.2rem">
+        <a class="btn" href="index.html">前往公開看板</a>
+        <button class="btn" data-back="1" type="button">再抽一批</button>
+      </div>
+    </section>`);
+  bindBack();
+}
+
+/* ── 導覽 ────────────────────────────────────────────────── */
+
+function bindBack() {
+  app.querySelectorAll('[data-back]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const n = Number(b.dataset.back);
+      if (n === 1) { S.caseNos = []; S.offsetCount = 1; S.excluded = new Set(); S.excludeReason = ''; step1(); }
+      else if (n === 2) step2();
+      else if (n === 3) step3();
+      else if (n === 4) step4();
+    })
+  );
+}
+
+new MutationObserver(bindBack).observe(app, { childList: true });
+
+/* ── 進入點 ──────────────────────────────────────────────── */
+
+try {
+  const d = await loadAll();
+  config = d.config;
+  state = d.state;
+
+  if (!config.github?.owner) {
+    app.innerHTML = `<div class="note warn">config.json 缺少 github 設定，抽籤台無法運作。</div>`;
+  } else if (!gh.getToken()) {
+    renderToken();
+  } else {
+    step1();
+  }
+} catch (err) {
+  fail(app, err);
+}
+</script>
+</body>
+</html>

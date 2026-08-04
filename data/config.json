@@ -52,6 +52,14 @@
     ]
   },
 
+  "github": {
+    "owner": "Caf555",
+    "repo": "selection",
+    "branch": "main",
+    "workflowFile": "draw.yml",
+    "_note": "抽籤台以此發動工作流程，並自 raw.githubusercontent 讀取剛寫入的結果（GitHub Pages 於推送後需約一分鐘才更新）"
+  },
+
   "ui": {
     "baseFontPx": 28,
     "resultFontPx": 128,

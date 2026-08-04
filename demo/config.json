@@ -132,17 +132,28 @@
     "redrawReturnsTicket": true
   },
   "drand": {
-    "_note": "P2 實作時依 drand 官方文件填入，禁止寫死於程式碼中",
-    "chainHash": "",
-    "publicKey": "",
+    "_note": "drand quicknet 鏈。參數於 2026-08-04 自 https://api.drand.sh 取得並經 BLS 驗簽確認。",
+    "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "publicKey": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+    "schemeID": "bls-unchained-g1-rfc9380",
+    "signatureDST": "BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_",
     "periodSeconds": 3,
     "roundOffset": 2,
+    "minAgreeingEndpoints": 3,
+    "requestTimeoutMs": 8000,
     "endpoints": [
       "https://api.drand.sh",
       "https://api2.drand.sh",
       "https://api3.drand.sh",
       "https://drand.cloudflare.com"
     ]
+  },
+  "github": {
+    "owner": "Caf555",
+    "repo": "selection",
+    "branch": "main",
+    "workflowFile": "draw.yml",
+    "_note": "抽籤台以此發動工作流程，並自 raw.githubusercontent 讀取剛寫入的結果（GitHub Pages 於推送後需約一分鐘才更新）"
   },
   "ui": {
     "baseFontPx": 28,

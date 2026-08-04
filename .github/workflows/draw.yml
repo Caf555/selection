@@ -12,11 +12,13 @@ name: 抽籤
 on:
   workflow_dispatch:
     inputs:
+      # 刻意用 string 而非 choice：choice 的選項寫死在本檔，
+      # 日後於 config.json 新增案類時會忘了同步而導致抽籤失敗。
+      # 案類是否存在且啟用，由 run-draw.mjs 依 config.json 驗證。
       case_type:
-        description: "案類"
+        description: "案類 ID（jinsu＝金訴、jinzhongsu＝金重訴）"
         required: true
-        type: choice
-        options: [jinsu, jinzhongsu]
+        type: string
       case_nos:
         description: "案號（每行一件，可一次多件）"
         required: true

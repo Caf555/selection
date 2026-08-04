@@ -39,6 +39,11 @@
 
   --radius: 10px;
   --gap: 1rem;
+
+  /* 螢幕上任何文字都不得小於 20px（SPEC §9.1）。
+     用 max() 而非固定 rem：基礎字級會隨視窗縮到 24px，
+     此時 0.8rem 只有 19.2px，仍會違規。 */
+  --fs-small: max(20px, 0.8rem);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -411,7 +416,7 @@ h2.sec {
 .checks li.pass .mark { color: var(--ok); }
 .checks li.fail .mark { color: var(--danger); }
 .checks li.skip .mark { color: var(--text-muted); }
-.checks li code { font-size: 0.8rem; word-break: break-all; color: var(--text-muted); }
+.checks li code { font-size: var(--fs-small); word-break: break-all; color: var(--text-muted); }
 
 .empty {
   padding: 2rem 1rem;

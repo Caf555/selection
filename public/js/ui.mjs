@@ -115,6 +115,7 @@ export function nav(current) {
     ['index.html', '公開看板'],
     ['history.html', '歷史查詢'],
     ['verify.html', '結果驗證'],
+    ['draw.html', '抽籤台'],
   ];
   return (
     `<nav class="main" aria-label="主要導覽">` +

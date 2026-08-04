@@ -17,7 +17,7 @@
 | P1 | 資料模型、抽籤引擎、單元測試 | **已完成** |
 | P3 | 公開看板、歷史查詢、驗證頁 | **已完成** |
 | P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | **程式已完成**，待完成 repo 設定 |
-| P4 | 抽籤台、管理頁、列印版面 | 未開始 |
+| P4 | 抽籤台、列印紀錄表 | **已完成**，尚未實機抽過 |
 | P5 | LINE 推播、QR code、本機同步腳本 | 未開始 |
 | P6 | 平行試辦、教育訓練、正式上線 | 未開始 |
 
@@ -153,6 +153,8 @@ public/        公開網頁（原生 HTML/CSS/JS，無建置流程）
   index.html     公開看板
   history.html   歷史查詢、受分統計、CSV 匯出
   verify.html    結果驗證
+  draw.html      抽籤台（操作者專用，需個人權杖）
+  print.html     抽籤紀錄表（A4 直式，供附卷）
   css/large-type.css  大字體與無障礙樣式
 tools/
   serve.mjs      本機預覽伺服器
