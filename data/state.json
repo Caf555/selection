@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "seq": 12,
-  "updatedAt": "2026-08-04T21:29:34.449+08:00",
+  "seq": 13,
+  "updatedAt": "2026-08-04T21:30:21.557+08:00",
   "bins": {
     "jinsu": {
       "tickets": [
@@ -22,6 +22,7 @@
     "jinzhongsu": {
       "tickets": [
         "un-01",
+        "un-02",
         "un-03",
         "un-04",
         "un-05",
@@ -35,5 +36,5 @@
     }
   },
   "prevStateHash": null,
-  "stateHash": "sha256:5838a88bd1fb8cd23e4816009845eb391f5ee7e76949ed67c571405fff1557c3"
+  "stateHash": "sha256:cc29643dbc58dbeba55ae1cd6cd320a00d8bbe96070fffa84ed2cfc98d62e854"
 }
