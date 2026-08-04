@@ -291,6 +291,38 @@ function render() {
     </div>
 
     <div class="card">
+      <h2>通知設定</h2>
+      <div class="body">
+        <p class="note">
+          LINE 推播需先於 GitHub 設定 Actions Secret <code>LINE_CHANNEL_TOKEN</code>。<br>
+          <strong>broadcast</strong>：推播給所有將官方帳號加為好友的人，不需群組 ID。<br>
+          <strong>push</strong>：推播至指定群組，另需設定 <code>LINE_GROUP_IDS</code>。
+        </p>
+        ${[['line.enabled', 'LINE 推播', 'bool'],
+           ['line.mode', '推播模式', 'mode'],
+           ['line.includeCaseNo', '通知中揭露案號', 'bool']].map(([k, label, kind]) => {
+          const [g, f] = k.split('.');
+          // 補上與 engine/notify.mjs 相同的預設值。若讓 undefined 直接進入切換邏輯，
+          // 按一次「修改」會跳到與實際預設相反的那一邊。
+          const raw = config.notify?.[g]?.[f];
+          const cur = kind === 'mode' ? (raw === 'push' ? 'push' : 'broadcast') : raw === true;
+          const shown = kind === 'bool' ? (cur ? '開啟' : '關閉') : cur;
+          return `<div class="item">
+            <div class="who">${esc(label)} <span class="tag perc">${esc(shown)}</span></div>
+            <div class="acts">
+              <button data-a="set-notify" data-id="${esc(k)}" data-n="${esc(label)}"
+                      data-kind="${kind}" data-cur="${esc(String(cur))}">修改</button>
+            </div>
+          </div>`;
+        }).join('')}
+        ${config.notify?.line?.enabled ? '' : `
+          <p class="note warn" style="margin-top:.8rem">
+            LINE 推播目前<strong>關閉</strong>。抽籤結果不會推播，公開看板仍照常更新。
+          </p>`}
+      </div>
+    </div>
+
+    <div class="card">
       <h2>規則參數</h2>
       <div class="body">
         <p class="note">
@@ -343,6 +375,20 @@ function render() {
     } else if (a === 'revoke-operator') {
       if (!confirm(`確定撤銷「${n}」的抽籤授權？\n\n紀錄會保留，只填入失效日期。`)) return;
       execute(a, { githubLogin: id }, `撤銷 ${n} 的授權`);
+    } else if (a === 'set-notify') {
+      const kind = b.dataset.kind, cur = b.dataset.cur;
+      if (kind === 'bool') {
+        const next = cur !== 'true';
+        if (!confirm(`確定將「${n}」改為${next ? '開啟' : '關閉'}？`)) return;
+        execute(a, { key: id, value: String(next) }, `${n}：${cur === 'true' ? '開啟' : '關閉'} → ${next ? '開啟' : '關閉'}`);
+      } else {
+        const next = cur === 'push' ? 'broadcast' : 'push';
+        if (!confirm(`確定將推播模式由 ${cur} 改為 ${next}？\n\n` +
+          (next === 'push'
+            ? 'push 模式需另外設定 LINE_GROUP_IDS，且群組 ID 必須經 webhook 取得。'
+            : 'broadcast 模式不需群組 ID，但收訊者須將官方帳號加為好友。'))) return;
+        execute(a, { key: id, value: next }, `推播模式：${cur} → ${next}`);
+      }
     } else if (a === 'set-rule') {
       const cur = config.rules[id];
       const v = prompt(`${n}\n\n目前值：${cur}\n請輸入新值：`, String(cur));

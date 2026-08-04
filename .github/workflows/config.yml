@@ -29,6 +29,7 @@ on:
           - add-case-type
           - rename-case-type
           - set-rule
+          - set-notify
           - add-operator
           - revoke-operator
       params:
@@ -38,6 +39,7 @@ on:
           改每輪籤數 {"id":"un-09","ticketsPerCycle":1}；
           停用股 {"id":"un-09"}；
           更名 {"id":"un-01","name":"新名稱"}；
+          開啟 LINE 通知 {"key":"line.enabled","value":"true"}；
           新增授權 {"githubLogin":"someone","displayName":"某某","role":"DRAW_OPERATOR"}
         required: true
         type: string

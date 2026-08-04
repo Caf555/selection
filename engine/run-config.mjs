@@ -198,6 +198,50 @@ const ACTIONS = {
     return { summary: `案類更名：${from} → ${p.name}`, binChanges: [] };
   },
 
+  'set-notify'(config, bins, p) {
+    req(p, 'key');
+    // 只開放這幾項；其餘通知設定（例如端點位址）不應由日常操作變更
+    const ALLOWED = {
+      'line.enabled': 'boolean',
+      'line.mode': ['broadcast', 'push'],
+      'line.includeCaseNo': 'boolean',
+      'web.enabled': 'boolean',
+    };
+    if (!(p.key in ALLOWED)) {
+      die(`不允許透過本流程修改 notify.${p.key}。可修改的項目：${Object.keys(ALLOWED).join('、')}`);
+    }
+
+    const [group, field] = p.key.split('.');
+    config.notify ??= {};
+    config.notify[group] ??= {};
+    const before = config.notify[group][field];
+
+    const spec = ALLOWED[p.key];
+    let val;
+    if (Array.isArray(spec)) {
+      val = String(p.value);
+      if (!spec.includes(val)) die(`notify.${p.key} 必須是 ${spec.join(' 或 ')}，收到「${val}」`);
+    } else {
+      val = p.value === true || p.value === 'true';
+    }
+    config.notify[group][field] = val;
+
+    const notes = [];
+    if (p.key === 'line.enabled' && val === true) {
+      const mode = config.notify.line.mode === 'push' ? 'push' : 'broadcast';
+      notes.push(`目前為 ${mode} 模式`);
+      notes.push(mode === 'push'
+        ? '需已設定 Actions Secret：LINE_CHANNEL_TOKEN 與 LINE_GROUP_IDS'
+        : '需已設定 Actions Secret：LINE_CHANNEL_TOKEN；收訊者須將官方帳號加為好友');
+    }
+
+    return {
+      summary: `通知設定 notify.${p.key}：${before} → ${val}` +
+        (notes.length ? `\n  - ${notes.join('\n  - ')}` : ''),
+      binChanges: [],
+    };
+  },
+
   'set-rule'(config, bins, p) {
     req(p, 'key');
     const ALLOWED = [
