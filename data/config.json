@@ -69,7 +69,12 @@
 
   "notify": {
     "web": { "enabled": true },
-    "line": { "enabled": false, "includeCaseNo": true }
+    "line": {
+      "enabled": false,
+      "mode": "broadcast",
+      "includeCaseNo": true,
+      "_mode": "broadcast＝推播給所有加官方帳號好友的人，不需 groupId；push＝推播至指定群組，需設定 LINE_GROUP_IDS"
+    }
   },
 
   "privacy": {

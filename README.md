@@ -248,18 +248,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\sync-local.ps1
 | **Channel Secret** | 驗證 webhook 請求是否真的來自 LINE | 送訊息不需要；取 groupId 時可用來驗簽 |
 | **Channel Access Token** | 呼叫 Messaging API 時的 `Authorization` | **需要，`LINE_CHANNEL_TOKEN` 填這個** |
 
-### 設定步驟
+### 兩種推播模式
 
-1. 申請 **LINE 官方帳號**（LINE Official Account Manager），並把它加入目標群組
+`config.notify.line.mode` 決定訊息怎麼送：
+
+| 模式 | 送給誰 | 需要 groupId？ | 需要 webhook？ |
+|---|---|---|---|
+| **`broadcast`（預設）** | 所有把官方帳號加為好友的人 | **不需要** | **不需要** |
+| `push` | 指定的群組 | 需要 | 需要（取 ID 時） |
+
+**建議先用 `broadcast`。** 取得群組 ID 必須架設 webhook 接收器並讓它可從網際網路
+連入，對只有一位管理者的系統而言負擔偏高。改用 broadcast 後，同仁只要把官方帳號
+加為好友就會收到通知，設定步驟少一大半。
+
+### 設定步驟（broadcast 模式）
+
+1. 申請 **LINE 官方帳號**（LINE Official Account Manager）
 2. 至 **LINE Developers** 建立 Messaging API channel
 3. 在該 channel 的 **Messaging API** 分頁最下方，
    **Channel access token** → **Issue**，簽發權杖
-4. 取得群組 ID（見下）
-5. 於本 repo 設定 Actions Secret（Settings → Secrets and variables → Actions）：
-   - `LINE_CHANNEL_TOKEN`：第 3 步簽發的權杖
-   - `LINE_GROUP_IDS`：第 4 步取得的群組 ID，多個以逗號分隔
-6. 把 `data/config.json` 的 `notify.line.enabled` 改為 `true`
+4. 於本 repo 設定 Actions Secret（Settings → Secrets and variables → Actions）：
+   - `LINE_CHANNEL_TOKEN`：上一步簽發的權杖
+5. 請需要收通知的同仁掃描官方帳號的 QR code 加為好友
+6. 把 `notify.line.enabled` 改為 `true`
    （請走「組織設定變更」流程，不要直接編輯檔案）
+
+### 設定步驟（push 模式，需要群組 ID）
+
+除上述第 1～4 步外，另需：
+
+- 把官方帳號加入目標群組
+- 取得群組 ID（見下），填入 Actions Secret `LINE_GROUP_IDS`，多個以逗號分隔
+- 把 `notify.line.mode` 改為 `push`
 
 ### 取得群組 ID
 

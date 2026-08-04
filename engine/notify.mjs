@@ -18,6 +18,7 @@
  */
 
 const LINE_PUSH = 'https://api.line.me/v2/bot/message/push';
+const LINE_BROADCAST = 'https://api.line.me/v2/bot/message/broadcast';
 
 /**
  * 組出通知文字
@@ -59,15 +60,46 @@ export function buildMessage({ config, records, dashboardUrl, includeCaseNo = tr
   return text.length > 4900 ? text.slice(0, 4890) + '\n…（內容過長，請至看板查閱）' : text;
 }
 
+/** 送出單一請求，將各種失敗一律轉為可回報的結果 */
+async function post(url, token, body, label) {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) return { ok: true };
+
+    let detail = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j?.message) detail += `：${j.message}`;
+    } catch { /* 部分錯誤回應沒有內容 */ }
+    return { ok: false, problem: `${label} 失敗（${detail}）` };
+  } catch (e) {
+    return { ok: false, problem: `${label} 例外：${e.message}` };
+  }
+}
+
 /**
- * 推播至 LINE 群組。
+ * 推播抽籤結果。
  *
- * @returns {Promise<{sent:number, failed:number, skipped:boolean, problems:string[]}>}
- *          任何情況都不擲出例外。
+ * 兩種模式（config.notify.line.mode）：
+ *
+ *   broadcast（預設）推播給所有將官方帳號加為好友的人。
+ *                    **不需要 groupId、不需要 webhook**，設定最單純。
+ *   push             推播至指定群組，需要 groupId。
+ *                    LINE 未提供列出群組的 API，groupId 只能自 webhook 事件取得
+ *                    （見 tools/get-group-id.mjs），設定較繁瑣。
+ *
+ * @returns {Promise<{sent:number, failed:number, skipped:boolean, mode:string, problems:string[]}>}
+ *          任何情況都不擲出例外——推播失敗不得影響已完成的分案。
  */
 export async function sendLine({ config, text, token, groupIds }) {
   const cfg = config.notify?.line ?? {};
-  const result = { sent: 0, failed: 0, skipped: false, problems: [] };
+  const mode = cfg.mode === 'push' ? 'push' : 'broadcast';
+  const result = { sent: 0, failed: 0, skipped: false, mode, problems: [] };
 
   if (!cfg.enabled) {
     result.skipped = true;
@@ -84,41 +116,31 @@ export async function sendLine({ config, text, token, groupIds }) {
     result.problems.push('未設定 LINE_CHANNEL_TOKEN（Actions Secret），未推播');
     return result;
   }
+
+  const messages = [{ type: 'text', text }];
+
+  if (mode === 'broadcast') {
+    const r = await post(LINE_BROADCAST, token, { messages }, '廣播');
+    if (r.ok) result.sent = 1;
+    else { result.failed = 1; result.problems.push(r.problem); }
+    return result;
+  }
+
   const targets = (groupIds ?? []).filter(Boolean);
   if (targets.length === 0) {
     result.skipped = true;
-    result.problems.push('未設定 LINE_GROUP_IDS（Actions Secret），未推播');
+    result.problems.push(
+      '未設定 LINE_GROUP_IDS（Actions Secret），未推播。' +
+      '若不想處理群組 ID，可將 config.notify.line.mode 設為 broadcast'
+    );
     return result;
   }
 
   for (const to of targets) {
-    try {
-      const res = await fetch(LINE_PUSH, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ to, messages: [{ type: 'text', text }] }),
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (res.ok) {
-        result.sent += 1;
-      } else {
-        result.failed += 1;
-        let detail = `HTTP ${res.status}`;
-        try {
-          const body = await res.json();
-          if (body?.message) detail += `：${body.message}`;
-        } catch { /* 部分錯誤回應沒有內容 */ }
-        // 目標 ID 可能含群組識別資訊，只保留末四碼供辨識
-        result.problems.push(`推播至 …${String(to).slice(-4)} 失敗（${detail}）`);
-      }
-    } catch (e) {
-      result.failed += 1;
-      result.problems.push(`推播至 …${String(to).slice(-4)} 例外：${e.message}`);
-    }
+    // 目標 ID 可能含群組識別資訊，訊息中只保留末四碼供辨識
+    const r = await post(LINE_PUSH, token, { to, messages }, `推播至 …${String(to).slice(-4)}`);
+    if (r.ok) result.sent += 1;
+    else { result.failed += 1; result.problems.push(r.problem); }
   }
 
   return result;

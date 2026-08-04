@@ -15,7 +15,7 @@ import { freshConfig } from './helpers.mjs';
 
 function cfg(line = {}) {
   const c = freshConfig();
-  c.notify = { web: { enabled: true }, line: { enabled: true, includeCaseNo: true, ...line } };
+  c.notify = { web: { enabled: true }, line: { enabled: true, includeCaseNo: true, mode: 'push', ...line } };
   return c;
 }
 
@@ -125,6 +125,44 @@ describe('推播失敗處理（不得中止抽籤）', () => {
     const r = await sendLine({ config: cfg(), text: 'x', token: 't', groupIds: [secret] });
     assert.ok(!r.problems.join().includes(secret), '完整群組 ID 不應出現在日誌中');
     assert.match(r.problems.join(), /9999/, '應保留末四碼供辨識');
+  });
+
+  test('broadcast 模式不需要 groupId（免去 webhook 設定）', async () => {
+    let calledUrl = null, calledBody = null;
+    globalThis.fetch = async (url, init) => {
+      calledUrl = url; calledBody = JSON.parse(init.body);
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+
+    const r = await sendLine({ config: cfg({ mode: 'broadcast' }), text: '結果', token: 't', groupIds: [] });
+    assert.equal(r.skipped, false, 'broadcast 不應因為沒有 groupId 而跳過');
+    assert.equal(r.sent, 1);
+    assert.equal(r.mode, 'broadcast');
+    assert.match(calledUrl, /\/message\/broadcast$/);
+    assert.ok(!('to' in calledBody), 'broadcast 的請求不得帶 to 欄位');
+    assert.equal(calledBody.messages[0].text, '結果');
+  });
+
+  test('未指定 mode 時預設為 broadcast（設定最單純的那一種）', async () => {
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    const c = freshConfig();
+    c.notify = { line: { enabled: true } };
+    const r = await sendLine({ config: c, text: 'x', token: 't', groupIds: [] });
+    assert.equal(r.mode, 'broadcast');
+    assert.equal(r.sent, 1);
+  });
+
+  test('push 模式缺少 groupId 時，提示可改用 broadcast', async () => {
+    const r = await sendLine({ config: cfg({ mode: 'push' }), text: 'x', token: 't', groupIds: [] });
+    assert.equal(r.skipped, true);
+    assert.match(r.problems.join(), /broadcast/, '應告知使用者有更簡單的替代方案');
+  });
+
+  test('broadcast 失敗時同樣不擲出例外', async () => {
+    globalThis.fetch = async () => ({ ok: false, status: 429, json: async () => ({ message: 'monthly limit' }) });
+    const r = await sendLine({ config: cfg({ mode: 'broadcast' }), text: 'x', token: 't', groupIds: [] });
+    assert.equal(r.failed, 1);
+    assert.match(r.problems.join(), /廣播 失敗/);
   });
 
   test('權杖不得出現在任何回報內容中', async () => {
