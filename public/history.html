@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>歷史查詢 — 案件分案抽籤系統</title>
+<link rel="stylesheet" href="css/large-type.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>歷史查詢</h1>
+    <div id="nav"></div>
+  </header>
+
+  <div id="banner"></div>
+  <main id="app"><p class="empty">載入中…</p></main>
+
+  <footer class="site">
+    <p>歷史紀錄只增不刪。更正、作廢、迴避重抽皆以新增紀錄的方式呈現，原紀錄一律保留。</p>
+  </footer>
+
+</div>
+
+<script type="module">
+import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime, counts } from './js/data.mjs';
+import { courtBadge, statusBadge, nav, demoBanner, esc, fail } from './js/ui.mjs';
+
+document.getElementById('nav').innerHTML = nav('history.html');
+document.getElementById('banner').innerHTML = demoBanner(isDemo());
+
+const app = document.getElementById('app');
+
+try {
+  const { config, history } = await loadAll();
+  const all = effectiveDraws(history).map((r) => applyAmends(history, r)).reverse();
+
+  app.innerHTML = `
+    <section>
+      <h2 class="sec">篩選條件</h2>
+      <div class="filters">
+        <div>
+          <label for="f-type">案類</label>
+          <select id="f-type">
+            <option value="">全部案類</option>
+            ${config.caseTypes.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="f-unit">承辦股</label>
+          <select id="f-unit">
+            <option value="">全部股別</option>
+            ${config.units.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="f-status">狀態</label>
+          <select id="f-status">
+            <option value="">全部狀態</option>
+            <option value="valid">僅有效</option>
+            <option value="voided">僅已作廢</option>
+            <option value="redraw">僅迴避重抽</option>
+            <option value="offset">僅重大案件（有抵分）</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-q">案號關鍵字</label>
+          <input type="search" id="f-q" placeholder="輸入案號的一部分">
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn" id="csv" type="button">匯出 CSV</button>
+        <span id="count" role="status" style="font-weight:700"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="sec">抽籤紀錄</h2>
+      <div id="table"></div>
+    </section>
+
+    <section>
+      <h2 class="sec">受分統計</h2>
+      <p style="font-size:0.9rem;color:var(--text-muted);margin-top:0">
+        依上方篩選條件計算。「折算件數」已計入重大案件抵分，較能反映實際工作量。
+      </p>
+      <div id="stats"></div>
+    </section>
+  `;
+
+  const els = {
+    type: document.getElementById('f-type'),
+    unit: document.getElementById('f-unit'),
+    status: document.getElementById('f-status'),
+    q: document.getElementById('f-q'),
+    table: document.getElementById('table'),
+    stats: document.getElementById('stats'),
+    count: document.getElementById('count'),
+  };
+
+  function filtered() {
+    const q = els.q.value.trim();
+    return all.filter((r) => {
+      if (els.type.value && r.caseTypeId !== els.type.value) return false;
+      if (els.unit.value && r.resultUnitId !== els.unit.value) return false;
+      if (q && !String(r.caseNo).includes(q)) return false;
+      switch (els.status.value) {
+        case 'valid':   return counts(r);
+        case 'voided':  return r.voided || r.superseded;
+        case 'redraw':  return r.type === 'REDRAW' || r.superseded;
+        case 'offset':  return r.offsetCount > 1;
+        default:        return true;
+      }
+    });
+  }
+
+  function renderTable(rows) {
+    if (rows.length === 0) {
+      els.table.innerHTML = `<p class="empty">沒有符合條件的紀錄</p>`;
+      return;
+    }
+    els.table.innerHTML = `<div class="tablewrap"><table>
+      <thead><tr>
+        <th scope="col">紀錄編號</th><th scope="col">時間</th><th scope="col">案類</th>
+        <th scope="col">案號</th><th scope="col">承辦股</th><th scope="col">庭別</th>
+        <th scope="col">抵分</th><th scope="col">狀態</th><th scope="col">驗證</th>
+      </tr></thead>
+      <tbody>${rows.map((r) => `
+        <tr class="${r.voided || r.superseded ? 'voided' : ''}">
+          <td class="num">${esc(r.recordId)}</td>
+          <td class="num">${fmtTime(r.at)}</td>
+          <td>${esc(caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId)}</td>
+          <td>${esc(r.caseNo)}${r.amended ? '<br><span class="badge b-plain">已更正</span>' : ''}</td>
+          <td><strong>${esc(r.resultUnitName)}</strong></td>
+          <td>${courtBadge(config, r.resultCourtId, { short: true })}</td>
+          <td class="num">${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'}</td>
+          <td>${statusBadge(r)}</td>
+          <td><a href="verify.html?id=${encodeURIComponent(r.recordId)}${isDemo() ? '&src=' + encodeURIComponent(new URLSearchParams(location.search).get('src')) : ''}">驗證</a></td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+  }
+
+  function renderStats(rows) {
+    const valid = rows.filter(counts);
+    const byUnit = new Map(config.units.filter((u) => u.active).map((u) => [u.id, { n: 0, w: 0 }]));
+    for (const r of valid) {
+      const e = byUnit.get(r.resultUnitId);
+      if (!e) continue;
+      e.n += 1;
+      e.w += r.offsetCount ?? 1;
+    }
+    const totalW = [...byUnit.values()].reduce((a, b) => a + b.w, 0);
+    const expect = byUnit.size > 0 ? totalW / byUnit.size : 0;
+
+    els.stats.innerHTML = `<div class="tablewrap"><table>
+      <thead><tr>
+        <th scope="col">股別</th><th scope="col">庭別</th>
+        <th scope="col">受分件數</th><th scope="col">折算件數</th>
+        <th scope="col">與平均的差距</th>
+      </tr></thead>
+      <tbody>${config.units.filter((u) => u.active).map((u) => {
+        const e = byUnit.get(u.id);
+        const dev = expect > 0 ? e.w - expect : 0;
+        const sign = dev > 0.05 ? '+' : '';
+        return `<tr>
+          <td><strong>${esc(u.name)}</strong></td>
+          <td>${courtBadge(config, u.courtId, { short: true })}</td>
+          <td class="num">${e.n}</td>
+          <td class="num">${e.w}</td>
+          <td class="num">${expect > 0 ? sign + dev.toFixed(1) : '—'}</td>
+        </tr>`;
+      }).join('')}
+      <tr><td colspan="3"><strong>合計</strong></td>
+          <td class="num"><strong>${totalW}</strong></td>
+          <td class="num">平均 ${expect.toFixed(1)}</td></tr>
+      </tbody></table></div>`;
+  }
+
+  function refresh() {
+    const rows = filtered();
+    els.count.textContent = `　共 ${rows.length} 筆`;
+    renderTable(rows);
+    renderStats(rows);
+  }
+
+  for (const el of [els.type, els.unit, els.status]) el.addEventListener('change', refresh);
+  els.q.addEventListener('input', refresh);
+
+  document.getElementById('csv').addEventListener('click', () => {
+    const rows = filtered();
+    const head = ['紀錄編號', '抽籤時間', '案類', '案號', '承辦股', '庭別', '抵分件數', '狀態', '執行者'];
+    const lines = rows.map((r) => [
+      r.recordId, r.at,
+      caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId,
+      r.caseNo, r.resultUnitName, r.resultCourtName,
+      r.offsetCount ?? 1,
+      r.voided ? '已作廢' : r.superseded ? '已重抽，不生效'
+        : (r.type === 'REDRAW' ? '迴避重抽' : '有效'),
+      r.operator ?? '',
+    ]);
+    const csv = [head, ...lines]
+      .map((cols) => cols.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+
+    // UTF-8 BOM，讓 Excel 直接開啟不會亂碼
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `抽籤紀錄_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  refresh();
+
+} catch (err) {
+  fail(app, err);
+}
+</script>
+</body>
+</html>

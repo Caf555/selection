@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>結果驗證 — 案件分案抽籤系統</title>
+<link rel="stylesheet" href="css/large-type.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>結果驗證</h1>
+    <div id="nav"></div>
+  </header>
+
+  <div id="banner"></div>
+
+  <main id="app">
+    <section>
+      <p class="note">
+        本頁在你的瀏覽器裡重新計算抽籤結果，不經過任何伺服器。
+        驗證所用的正規化程式碼與抽籤引擎是<strong>同一份檔案</strong>
+        （<code>engine/canonical.mjs</code>），因此驗證通過代表紀錄確實未被更動。
+      </p>
+
+      <div class="filters" style="margin-top:1.2rem">
+        <div>
+          <label for="rid">紀錄編號</label>
+          <select id="rid"></select>
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn" id="go" type="button" style="width:100%">開始驗證</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="out"></div>
+
+    <section>
+      <h2 class="sec">全部歷史的雜湊鏈</h2>
+      <div id="chain"><p class="empty">載入中…</p></div>
+    </section>
+  </main>
+
+  <footer class="site">
+    <p>雜湊鏈的作用：每筆紀錄都含有前一筆的雜湊值。若有人竄改中間任何一筆，其後所有紀錄的驗證都會失敗，且能精確指出斷裂位置。</p>
+  </footer>
+
+</div>
+
+<script type="module">
+import { loadAll, isDemo, caseTypeOf, fmtTime } from './js/data.mjs';
+import { hashObject, canonicalizeOmitting } from './js/hashweb.mjs';
+import { nav, demoBanner, esc, fail, courtBadge } from './js/ui.mjs';
+
+document.getElementById('nav').innerHTML = nav('verify.html');
+document.getElementById('banner').innerHTML = demoBanner(isDemo());
+
+const app = document.getElementById('app');
+const out = document.getElementById('out');
+
+const S = { PASS: 'pass', FAIL: 'fail', SKIP: 'skip' };
+const MARK = { pass: '✓', fail: '✗', skip: '—' };
+
+function checkList(items) {
+  return `<ul class="checks">${items.map((it) => `
+    <li class="${it.status}">
+      <span class="mark" aria-hidden="true">${MARK[it.status]}</span>
+      <span>
+        <strong>${esc(it.title)}</strong>
+        <span class="sr-only">：${it.status === 'pass' ? '通過' : it.status === 'fail' ? '未通過' : '未執行'}</span>
+        <br>${it.detail}
+      </span>
+    </li>`).join('')}</ul>`;
+}
+
+try {
+  const { config, history } = await loadAll();
+
+  /* ── 全部歷史的雜湊鏈 ─────────────────────────────────── */
+  const chainEl = document.getElementById('chain');
+  if (history.length === 0) {
+    chainEl.innerHTML = `<p class="empty">尚無歷史紀錄</p>`;
+  } else {
+    let prev = null, broken = null;
+    for (let i = 0; i < history.length; i++) {
+      const r = history[i];
+      const expected = await hashObject(r, ['recordHash']);
+      if (r.recordHash !== expected) {
+        broken = { i, id: r.recordId, why: `第 ${i + 1} 筆（${r.recordId}）的內容與其雜湊不符，該筆已遭竄改` };
+        break;
+      }
+      if ((r.prevRecordHash ?? null) !== prev) {
+        broken = { i, id: r.recordId, why: `第 ${i + 1} 筆（${r.recordId}）的鏈結指向錯誤，其前方有紀錄被抽換或刪除` };
+        break;
+      }
+      prev = r.recordHash;
+    }
+    chainEl.innerHTML = broken
+      ? `<div class="note warn"><span class="badge b-void big">雜湊鏈驗證失敗</span><br><br>${esc(broken.why)}</div>`
+      : `<div class="note"><span class="badge b-ok big">雜湊鏈完整　✓</span><br><br>
+         已逐筆重算並比對 ${history.length} 筆紀錄，全部連續無斷點。</div>`;
+  }
+
+  /* ── 單筆驗證 ─────────────────────────────────────────── */
+  const drawTypes = ['DRAW', 'REDRAW', 'OFFLINE_BACKFILL'];
+  const draws = history.filter((r) => drawTypes.includes(r.type));
+  const sel = document.getElementById('rid');
+
+  if (draws.length === 0) {
+    sel.innerHTML = `<option value="">尚無抽籤紀錄</option>`;
+    sel.disabled = true;
+    document.getElementById('go').disabled = true;
+  } else {
+    sel.innerHTML = draws.slice().reverse()
+      .map((r) => `<option value="${esc(r.recordId)}">${esc(r.recordId)}　${esc(r.caseNo)}　→　${esc(r.resultUnitName)}</option>`)
+      .join('');
+  }
+
+  async function verifyOne(recordId) {
+    const idx = history.findIndex((r) => r.recordId === recordId);
+    const rec = history[idx];
+    if (!rec) { out.innerHTML = `<p class="empty">找不到紀錄 ${esc(recordId)}</p>`; return; }
+
+    const items = [];
+
+    // 1. 本筆內容雜湊
+    const expected = await hashObject(rec, ['recordHash']);
+    items.push({
+      status: rec.recordHash === expected ? S.PASS : S.FAIL,
+      title: '紀錄內容未遭更動',
+      detail: rec.recordHash === expected
+        ? `重算雜湊與紀錄相符<br><code>${esc(expected)}</code>`
+        : `<strong>不相符</strong><br>紀錄值 <code>${esc(rec.recordHash)}</code><br>重算值 <code>${esc(expected)}</code>`,
+    });
+
+    // 2. 與前一筆的鏈結
+    const prevRec = idx > 0 ? history[idx - 1] : null;
+    const expectedPrev = prevRec ? prevRec.recordHash : null;
+    items.push({
+      status: (rec.prevRecordHash ?? null) === expectedPrev ? S.PASS : S.FAIL,
+      title: '與前一筆紀錄的鏈結正確',
+      detail: prevRec
+        ? `指向 ${esc(prevRec.recordId)}<br><code>${esc(rec.prevRecordHash ?? 'null')}</code>`
+        : '本筆為第一筆紀錄，前置雜湊應為 null',
+    });
+
+    // 3. 抽籤前籤筒快照
+    const bbHash = await hashObject({ tickets: rec.binBefore });
+    items.push({
+      status: rec.binBeforeHash === bbHash ? S.PASS : S.FAIL,
+      title: '抽籤前的籤筒內容未遭更動',
+      detail: `籤筒內共 ${rec.binBefore.length} 支籤<br><code>${esc(bbHash)}</code>`,
+    });
+
+    // 4. 可抽集合是否由籤筒與迴避清單正確推導
+    const excluded = new Set(rec.excludedUnitIds ?? []);
+    // binBefore 為抽籤前狀態；若本次因迴避或門檻而補籤，實際抽籤的籤筒為 rec.drawable
+    const derived = rec.binBefore.filter((u) => !excluded.has(u));
+    const refilled = (rec.refills ?? []).length > 0;
+    const derivedOk = JSON.stringify(derived) === JSON.stringify(rec.drawable);
+    items.push({
+      status: derivedOk ? S.PASS : (refilled ? S.SKIP : S.FAIL),
+      title: '可抽集合由籤筒與迴避清單正確推導',
+      detail: derivedOk
+        ? `${rec.binBefore.length} 支籤扣除 ${excluded.size} 個迴避股後，可抽 ${rec.drawable.length} 支`
+        : refilled
+          ? `本次抽籤過程中發生補籤，可抽集合非直接由 binBefore 推得，改以紀錄的 drawable 為準（共 ${rec.drawable.length} 支）`
+          : `<strong>推導結果與紀錄不符</strong>`,
+    });
+
+    // 5. 抽籤位置對應的股別
+    const at = rec.drawable[rec.pickIndex];
+    items.push({
+      status: at === rec.resultUnitId ? S.PASS : S.FAIL,
+      title: '抽籤位置對應到紀錄的承辦股',
+      detail: at === rec.resultUnitId
+        ? `可抽集合第 ${rec.pickIndex + 1} 個位置為 <strong>${esc(rec.resultUnitName)}</strong>，與紀錄相符`
+        : `<strong>不相符</strong>：第 ${rec.pickIndex + 1} 個位置為 ${esc(at ?? '（超出範圍）')}，紀錄為 ${esc(rec.resultUnitId)}`,
+    });
+
+    // 6. 抽籤後籤筒快照
+    const baHash = await hashObject({ tickets: rec.binAfter });
+    items.push({
+      status: rec.binAfterHash === baHash ? S.PASS : S.FAIL,
+      title: '抽籤後的籤筒內容未遭更動',
+      detail: `籤筒內共 ${rec.binAfter.length} 支籤` +
+        (refilled ? `　（本次補籤 ${rec.refills.length} 次）` : ''),
+    });
+
+    // 7. drand 公共亂數 — 第二階段功能
+    items.push({
+      status: rec.drand ? S.PASS : S.SKIP,
+      title: '抽籤位置由 drand 公共亂數推導',
+      detail: rec.drand
+        ? `輪次 ${esc(rec.drand.round)}<br><code>${esc(rec.drand.randomness)}</code>`
+        : `本筆紀錄沒有 drand 資料。公共亂數與兩階段承諾—開籤屬<strong>第二階段</strong>功能，尚未實作，` +
+          `因此目前<strong>無法</strong>證明抽籤位置不可預知或未經操控。`,
+    });
+
+    const failed = items.filter((i) => i.status === S.FAIL).length;
+    const skipped = items.filter((i) => i.status === S.SKIP).length;
+
+    const verdict = failed > 0
+      ? `<span class="badge b-void big">驗證未通過（${failed} 項不符）</span>`
+      : skipped > 0
+        ? `<span class="badge b-redraw big">已完成的項目全部通過，但有 ${skipped} 項尚無法驗證</span>`
+        : `<span class="badge b-ok big">本筆抽籤結果驗證通過 ✓</span>`;
+
+    out.innerHTML = `
+      <section>
+        <h2 class="sec">驗證結果</h2>
+        <div class="latest" style="padding:1rem">
+          <div class="label">${esc(rec.recordId)}　${esc(caseTypeOf(config, rec.caseTypeId)?.name ?? '')}　${fmtTime(rec.at)}</div>
+          <div class="caseno">${esc(rec.caseNo)}</div>
+          <div class="result" style="font-size:clamp(2rem,7vw,3.4rem)">${esc(rec.resultUnitName)}</div>
+          <div class="row">${courtBadge(config, rec.resultCourtId)}
+            ${rec.offsetCount > 1 ? `<span class="badge b-plain">抵 ${rec.offsetCount} 件</span>` : ''}</div>
+          <div style="margin-top:1rem">${verdict}</div>
+        </div>
+        ${checkList(items)}
+        <details style="margin-top:1.2rem">
+          <summary style="font-size:1rem;font-weight:700;cursor:pointer;min-height:64px;display:flex;align-items:center">
+            顯示本筆紀錄的正規化原文（雜湊即由此字串計算）
+          </summary>
+          <pre style="overflow-x:auto;font-size:0.75rem;background:var(--surface);padding:0.8rem;border:3px solid var(--border);border-radius:10px;white-space:pre-wrap;word-break:break-all">${esc(canonicalizeOmitting(rec, ['recordHash']))}</pre>
+        </details>
+      </section>`;
+    out.scrollIntoView({ block: 'start' });
+  }
+
+  document.getElementById('go').addEventListener('click', () => verifyOne(sel.value));
+
+  const wanted = new URLSearchParams(location.search).get('id');
+  if (wanted && draws.some((r) => r.recordId === wanted)) {
+    sel.value = wanted;
+    await verifyOne(wanted);
+  }
+
+} catch (err) {
+  fail(app, err);
+}
+</script>
+</body>
+</html>

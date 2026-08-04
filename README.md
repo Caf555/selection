@@ -15,8 +15,8 @@
 | 階段 | 內容 | 狀態 |
 |---|---|---|
 | P1 | 資料模型、抽籤引擎、單元測試 | **已完成** |
+| P3 | 公開看板、歷史查詢、驗證頁 | **已完成** |
 | P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | 未開始 |
-| P3 | 公開看板、歷史查詢、驗證頁 | 未開始 |
 | P4 | 抽籤台、管理頁、列印版面 | 未開始 |
 | P5 | LINE 推播、QR code、本機同步腳本 | 未開始 |
 | P6 | 平行試辦、教育訓練、正式上線 | 未開始 |
@@ -49,6 +49,26 @@ node engine/cli.mjs simulate --n 30 --seed demo
 ```bash
 node engine/cli.mjs verify
 ```
+
+### 檢視網頁
+
+網頁必須以 `http://` 開啟才能讀取資料檔（`file://` 會被瀏覽器的同源政策擋下）。
+
+```bash
+node tools/serve.mjs
+```
+
+開啟 <http://localhost:8080/public/index.html>。
+
+正式資料目前是空的，若要看有內容的版面，先產生示範資料：
+
+```bash
+node tools/seed-demo.mjs
+```
+
+再開啟 <http://localhost:8080/public/index.html?src=../demo/>。
+示範資料寫在獨立的 `demo/` 目錄，不會碰到 `data/` 底下的正式資料，
+且頁面上會有明顯的紅色警示標明是模擬內容。
 
 ---
 
@@ -84,13 +104,29 @@ data/          資料檔（唯一真實來源）
 engine/        抽籤引擎（純 Node.js，離線可執行）
   lottery.mjs    核心演算法 ← 修改前請先讀 SPEC §3.6
   random.mjs     拒絕採樣，避免模數偏差
-  hash.mjs       RFC 8785 正規化與 SHA-256
+  canonical.mjs  RFC 8785 正規化（瀏覽器與 Node 共用同一份）
+  hash.mjs       SHA-256 / HMAC
   records.mjs    紀錄產生與雜湊鏈
   operations.mjs 更正、作廢、重抽
   state.mjs      資料檔讀寫與完整性驗證
   cli.mjs        本機命令列工具
   test/          單元測試（對應 SPEC §14）
+public/        公開網頁（原生 HTML/CSS/JS，無建置流程）
+  index.html     公開看板
+  history.html   歷史查詢、受分統計、CSV 匯出
+  verify.html    結果驗證
+  css/large-type.css  大字體與無障礙樣式
+tools/
+  serve.mjs      本機預覽伺服器
+  seed-demo.mjs  產生示範資料至 demo/
 ```
+
+### 驗證頁為什麼可信
+
+`public/js/hashweb.mjs` 直接引用 `engine/canonical.mjs` —— 驗證頁與抽籤引擎
+執行的是**同一份**正規化程式碼。若驗證頁自行重寫一份，驗證通過與否就不再具有意義。
+
+瀏覽器端以 WebCrypto 計算 SHA-256，Node 端以 `node:crypto` 計算，兩者結果一致。
 
 ---
 

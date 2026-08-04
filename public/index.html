@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>公開看板 — 案件分案抽籤系統</title>
+<meta name="description" content="金訴、金重訴分案抽籤的即時籤筒狀態與抽籤紀錄，全部公開。">
+<link rel="stylesheet" href="css/large-type.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <h1>案件分案抽籤系統　公開看板</h1>
+    <div id="updated" class="row" style="font-size:0.9rem;color:var(--text-muted)"></div>
+    <div id="nav"></div>
+  </header>
+
+  <div id="banner"></div>
+  <main id="app"><p class="empty">載入中…</p></main>
+
+  <footer class="site">
+    <p>本頁所有內容皆為公開紀錄。抽籤結果由公共亂數決定，任何人可於「結果驗證」頁自行查證。</p>
+    <p>歷史紀錄只增不刪，並以雜湊鏈相互串接；任何一筆遭竄改，其後全部紀錄的驗證都會失敗。</p>
+  </footer>
+
+</div>
+
+<script type="module">
+import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime } from './js/data.mjs';
+import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail } from './js/ui.mjs';
+
+document.getElementById('nav').innerHTML = nav('index.html');
+document.getElementById('banner').innerHTML = demoBanner(isDemo());
+
+const app = document.getElementById('app');
+
+try {
+  const { config, state, history } = await loadAll();
+
+  document.getElementById('updated').textContent =
+    `狀態更新於 ${fmtTime(state.updatedAt)}　累計序號 ${state.seq}　歷史紀錄 ${history.length} 筆`;
+
+  const draws = effectiveDraws(history).map((r) => applyAmends(history, r));
+  const latest = draws.length ? draws[draws.length - 1] : null;
+
+  /* ── 最新結果 ─────────────────────────────────────────── */
+  let latestHtml;
+  if (!latest) {
+    latestHtml = `<div class="latest"><div class="label">最新抽籤結果</div>
+      <div class="result" style="font-size:2rem">尚無抽籤紀錄</div>
+      <div class="meta">籤筒已初始化，等待第一件案件。</div></div>`;
+  } else {
+    const badges = [statusBadge(latest)];
+    if (latest.offsetCount > 1) badges.push(`<span class="badge b-plain">重大案件　抵 ${latest.offsetCount} 件</span>`);
+    latestHtml = `<div class="latest">
+      <div class="label">最新抽籤結果　${esc(caseTypeOf(config, latest.caseTypeId)?.name ?? '')}</div>
+      <div class="caseno">${esc(latest.caseNo)}</div>
+      <div class="arrow" aria-hidden="true">↓</div>
+      <div class="result">${esc(latest.resultUnitName)}</div>
+      <div class="row" style="font-size:1.15rem;font-weight:700">
+        ${courtBadge(config, latest.resultCourtId)}
+        ${badges.join(' ')}
+      </div>
+      <div class="meta">${esc(latest.recordId)}　抽籤時間 ${fmtTime(latest.at)}</div>
+    </div>`;
+  }
+
+  /* ── 籤筒現況 ─────────────────────────────────────────── */
+  const binsHtml = config.caseTypes
+    .filter((c) => c.active)
+    .sort((a, b) => a.order - b.order)
+    .map((ct) => (state.bins[ct.id] ? renderBin(config, ct, state.bins[ct.id]) : ''))
+    .join('');
+
+  /* ── 最近 10 筆 ───────────────────────────────────────── */
+  const recent = draws.slice(-10).reverse();
+  const recentHtml = recent.length === 0
+    ? `<p class="empty">尚無抽籤紀錄</p>`
+    : `<div class="tablewrap"><table>
+        <caption class="sr-only">最近十筆抽籤紀錄</caption>
+        <thead><tr>
+          <th scope="col">時間</th><th scope="col">案類</th><th scope="col">案號</th>
+          <th scope="col">承辦股</th><th scope="col">庭別</th>
+          <th scope="col">抵分</th><th scope="col">狀態</th>
+        </tr></thead>
+        <tbody>${recent.map((r) => `
+          <tr class="${r.voided || r.superseded ? 'voided' : ''}">
+            <td class="num">${fmtTime(r.at)}</td>
+            <td>${esc(caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId)}</td>
+            <td>${esc(r.caseNo)}</td>
+            <td><strong>${esc(r.resultUnitName)}</strong></td>
+            <td>${courtBadge(config, r.resultCourtId, { short: true })}</td>
+            <td class="num">${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'}</td>
+            <td>${statusBadge(r)}</td>
+          </tr>`).join('')}
+        </tbody></table></div>`;
+
+  app.innerHTML = `
+    ${latestHtml}
+    <section>
+      <h2 class="sec">籤筒現況</h2>
+      <div class="bins">${binsHtml}</div>
+    </section>
+    <section>
+      <h2 class="sec">最近抽籤紀錄</h2>
+      ${recentHtml}
+      <p style="margin-top:0.8rem"><a class="btn" href="history.html${location.search}">查看全部歷史紀錄</a></p>
+    </section>
+    <section>
+      <h2 class="sec">分享本頁</h2>
+      <div class="row">
+        <button class="btn" id="copy" type="button">複製本頁網址</button>
+        <span id="copied" role="status"></span>
+      </div>
+      <p class="note" style="margin-top:0.8rem">
+        本頁免登入即可閱覽，可直接把網址傳給任何人。
+        列印用的 QR code 與 LINE 群組自動推播屬第五階段功能，尚未實作。
+      </p>
+    </section>
+  `;
+
+  document.getElementById('copy').addEventListener('click', async () => {
+    const out = document.getElementById('copied');
+    try {
+      await navigator.clipboard.writeText(location.href);
+      out.textContent = '　已複製 ✓';
+    } catch {
+      out.textContent = '　複製失敗，請手動選取網址列';
+    }
+  });
+
+} catch (err) {
+  fail(app, err);
+}
+</script>
+</body>
+</html>
