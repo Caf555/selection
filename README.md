@@ -239,13 +239,59 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\sync-local.ps1
 程式已完成，但需要你先完成下列外部設定。**LINE Notify 已於 2025-03-31
 終止服務**，本系統改用 LINE Messaging API。
 
-1. 申請 **LINE 官方帳號**（LINE Official Account Manager）
-2. 至 **LINE Developers** 建立 Messaging API channel，取得 **Channel Access Token**
-3. 於本 repo 設定 Actions Secret（Settings → Secrets and variables → Actions）：
-   - `LINE_CHANNEL_TOKEN`：上一步取得的權杖
-   - `LINE_GROUP_IDS`：目標群組 ID，多個以逗號分隔
-4. 將官方帳號加入目標群組，透過 webhook 取得 `groupId`
-5. 把 `data/config.json` 的 `notify.line.enabled` 改為 `true`
+### ⚠ Channel Secret 不是 Channel Access Token
+
+這兩個是不同的東西，最容易搞混：
+
+| | 用途 | 本系統需要嗎 |
+|---|---|---|
+| **Channel Secret** | 驗證 webhook 請求是否真的來自 LINE | 送訊息不需要；取 groupId 時可用來驗簽 |
+| **Channel Access Token** | 呼叫 Messaging API 時的 `Authorization` | **需要，`LINE_CHANNEL_TOKEN` 填這個** |
+
+### 設定步驟
+
+1. 申請 **LINE 官方帳號**（LINE Official Account Manager），並把它加入目標群組
+2. 至 **LINE Developers** 建立 Messaging API channel
+3. 在該 channel 的 **Messaging API** 分頁最下方，
+   **Channel access token** → **Issue**，簽發權杖
+4. 取得群組 ID（見下）
+5. 於本 repo 設定 Actions Secret（Settings → Secrets and variables → Actions）：
+   - `LINE_CHANNEL_TOKEN`：第 3 步簽發的權杖
+   - `LINE_GROUP_IDS`：第 4 步取得的群組 ID，多個以逗號分隔
+6. 把 `data/config.json` 的 `notify.line.enabled` 改為 `true`
+   （請走「組織設定變更」流程，不要直接編輯檔案）
+
+### 取得群組 ID
+
+LINE 沒有提供「列出 bot 所在群組」的 API，群組 ID **只能從 webhook 事件取得**。
+本專案提供一支本機接收器，資料不經任何第三方服務：
+
+```bash
+node tools/get-group-id.mjs
+```
+
+依畫面指示操作：用 `cloudflared tunnel --url http://localhost:3000` 或
+`ngrok http 3000` 讓連接埠可從外部連入，把取得的網址加上 `/webhook` 填進
+LINE Developers 的 Webhook URL 並開啟「Use webhook」，然後在群組裡隨便說一句話。
+
+若先設定環境變數 `LINE_CHANNEL_SECRET`，接收器會驗證每個請求的簽章，
+確認確實來自 LINE 而非他人偽造。
+
+取得 ID 後，請把 Webhook URL 清空或關閉「Use webhook」——本系統只送訊息、
+不接收訊息，不需要長期開著 webhook。
+
+### 訊息形式
+
+**一批抽籤合併為一則訊息**，不是一件一則。LINE 免費方案按訊息則數計費，
+所以真正消耗額度的是群組數量，不是案件數量：
+
+| 情境 | 消耗則數 |
+|---|---|
+| 一次抽 10 件，推到 1 個群組 | 1 則 |
+| 一次抽 10 件，推到 3 個群組 | 3 則 |
+
+訊息超過約 4,900 字元會截斷並附註請至看板查閱，避免超過 LINE 的長度上限
+而導致整批推播失敗（約 120 件才會觸發）。
 
 若不宜於通知中揭露案號，將 `notify.line.includeCaseNo` 設為 `false`，
 系統只會推播「金訴 3 件」這類摘要與看板網址。
