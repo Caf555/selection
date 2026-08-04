@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto';
 
 import { loadConfig, loadState, loadHistory, DATA_DIR } from '../engine/state.mjs';
 import { verifyChain } from '../engine/records.mjs';
-import { verifyRecordDrand } from '../engine/bls.mjs';
+import { verifyRecordDrand, blsAvailable } from '../engine/bls.mjs';
 import { hashObject } from '../engine/hash.mjs';
 
 const problems = [];
@@ -63,6 +63,11 @@ console.log('\n抽籤紀錄');
 const drawTypes = ['DRAW', 'REDRAW', 'OFFLINE_BACKFILL'];
 const draws = history.filter((r) => drawTypes.includes(r.type));
 
+// 第二層（BLS 驗簽）需要 @noble/curves。未安裝時降級為「未驗證」而非「失敗」——
+// SPEC §4.0 明訂第二層不可用時不應影響作業，且第一層的多端點交叉比對
+// 與 randomness = SHA256(signature) 檢查仍照常執行。
+const hasBls = await blsAvailable();
+
 let drandChecked = 0;
 let drandMissing = 0;
 
@@ -96,6 +101,7 @@ for (const r of draws) {
   }
 
   // 第二層 BLS 驗簽
+  if (!hasBls) continue;
   const v = await verifyRecordDrand(config, r);
   if (v.ok) drandChecked += 1;
   else if (v.skipped) drandMissing += 1;
@@ -103,7 +109,12 @@ for (const r of draws) {
 }
 
 ok(`已檢查 ${checked} 筆抽籤紀錄的抽籤位置與籤筒快照`);
-if (drandChecked > 0) ok(`${drandChecked} 筆通過 BLS 密碼學驗簽`);
+if (!hasBls) {
+  skip('未安裝 @noble/curves，本次略過 BLS 密碼學驗簽（第一層檢查已完成）。' +
+       '執行 npm ci 後重跑即可完整驗證');
+} else if (drandChecked > 0) {
+  ok(`${drandChecked} 筆通過 BLS 密碼學驗簽`);
+}
 if (drandMissing > 0) {
   skip(`${drandMissing} 筆沒有 drand 資料（P2 上線前產生的紀錄，或離線備援補登），無法驗證其不可預知性`);
 }

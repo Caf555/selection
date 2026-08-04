@@ -86,14 +86,19 @@ jobs:
       - name: 執行設定變更
         run: node engine/run-config.mjs
 
-      # 變更後再驗一次：設定與籤筒必須同時是合法的
+      # 變更後再驗一次：設定與籤筒必須同時是合法的。
+      #
+      # 刻意不執行 npm ci：本 job 具備 contents:write 且會推送資料，
+      # 在其中安裝第三方套件等於把供應鏈風險引入可寫入的環節。
+      # 缺少 @noble/curves 時 verify-all 會降級略過 BLS 驗簽（SPEC §4.0），
+      # 而完整的 BLS 稽核由 audit.yml 在推送後自動觸發，本來就會執行。
       - name: 變更後完整性驗證
-        run: |
-          npm ci
-          node tools/verify-all.mjs
+        run: node tools/verify-all.mjs
 
+      # 一律以環境變數引用使用者輸入，不得寫成 ${{ inputs.* }}——
+      # 後者是 shell 執行前的文字替換，會構成指令注入。
       - name: 推送
         run: |
           git add data/
-          git commit -m "設定變更：${{ inputs.action }}（${{ inputs.reason }}）"
+          git commit -m "設定變更：${ACTION}（${REASON}）"
           git push

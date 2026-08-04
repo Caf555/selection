@@ -59,8 +59,12 @@ jobs:
       - name: 作廢並回復籤筒
         run: node engine/run-ops.mjs void
 
+      # 使用 $RECORD_ID / $REASON（job 層 env）而非 ${{ inputs.* }}。
+      # ${{ }} 是 shell 執行「之前」的文字替換，使用者輸入會直接成為指令的一部分，
+      # 可藉此執行任意指令並竊取環境中的 GITHUB_TOKEN 與各項 Secret。
+      # 環境變數則只會被展開為字串，不會被當成程式碼。
       - name: 推送
         run: |
           git add data/
-          git commit -m "作廢：${{ inputs.record_id }}（${{ inputs.reason }}）"
+          git commit -m "作廢：${RECORD_ID}（${REASON}）"
           git push

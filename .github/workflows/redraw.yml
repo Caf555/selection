@@ -63,10 +63,14 @@ jobs:
         id: commit_phase
         run: node engine/run-redraw.mjs commit
 
+      # 一律以環境變數引用使用者輸入，不得寫成 ${{ inputs.* }}——
+      # 後者是 shell 執行前的文字替換，會構成指令注入。
       - name: 推送承諾（此步驟失敗即中止，絕不可略過而直接開籤）
+        env:
+          TARGET_ROUND: ${{ steps.commit_phase.outputs.target_round }}
         run: |
           git add data/pending/
-          git commit -m "重抽承諾：${{ inputs.record_id }}，目標 drand 輪次 ${{ steps.commit_phase.outputs.target_round }}"
+          git commit -m "重抽承諾：${RECORD_ID}，目標 drand 輪次 ${TARGET_ROUND}"
           git push
 
       # ── 階段二：開籤 ──────────────────────────────────────
@@ -78,5 +82,5 @@ jobs:
       - name: 推送重抽結果
         run: |
           git add data/
-          git commit -m "迴避重抽：${{ inputs.record_id }}（${{ inputs.reason }}）"
+          git commit -m "迴避重抽：${RECORD_ID}（${REASON}）"
           git push

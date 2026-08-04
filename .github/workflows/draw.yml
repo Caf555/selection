@@ -98,12 +98,16 @@ jobs:
         run: node engine/run-draw.mjs authorize
 
       # 授權失敗時 DENIED 紀錄已寫入，仍須推送以留下公開痕跡
+      # 一律以環境變數引用使用者輸入，不得寫成 ${{ inputs.* }}／${{ github.* }}——
+      # 後者是 shell 執行前的文字替換，使用者輸入會直接成為指令的一部分，
+      # 可藉此執行任意指令並竊取環境中的 GITHUB_TOKEN 與各項 Secret，
+      # 使「操作者只能發動抽籤、不能改資料」的權限設計完全失效。
       - name: 推送 DENIED 紀錄
         if: failure()
         run: |
           if ! git diff --quiet -- data/; then
             git add data/
-            git commit -m "DENIED: ${{ github.actor }} 嘗試抽籤但未通過檢查"
+            git commit -m "DENIED: ${ACTOR} 嘗試抽籤但未通過檢查"
             git push
           fi
 
@@ -113,9 +117,12 @@ jobs:
         run: node engine/run-draw.mjs commit
 
       - name: 推送承諾（此步驟失敗即中止，絕不可略過而直接開籤）
+        env:
+          BATCH_ID: ${{ steps.commit_phase.outputs.batch_id }}
+          TARGET_ROUND: ${{ steps.commit_phase.outputs.target_round }}
         run: |
           git add data/pending/
-          git commit -m "承諾：批次 ${{ steps.commit_phase.outputs.batch_id }}，目標 drand 輪次 ${{ steps.commit_phase.outputs.target_round }}"
+          git commit -m "承諾：批次 ${BATCH_ID}，目標 drand 輪次 ${TARGET_ROUND}"
           git push
 
       # ── 階段二：開籤 ──────────────────────────────────────
@@ -129,7 +136,10 @@ jobs:
         run: node engine/run-draw.mjs reveal
 
       - name: 推送抽籤結果
+        env:
+          BATCH_ID: ${{ steps.commit_phase.outputs.batch_id }}
+          TARGET_ROUND: ${{ steps.commit_phase.outputs.target_round }}
         run: |
           git add data/
-          git commit -m "抽籤：批次 ${{ steps.commit_phase.outputs.batch_id }}（drand 第 ${{ steps.commit_phase.outputs.target_round }} 輪）"
+          git commit -m "抽籤：批次 ${BATCH_ID}（drand 第 ${TARGET_ROUND} 輪）"
           git push
