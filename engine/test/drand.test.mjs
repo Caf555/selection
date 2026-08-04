@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 
 import { fetchRound, latestRound, targetRoundFor, messageForRound, DRAND_ERR } from '../drand.mjs';
 import { verifyRoundSignature } from '../bls.mjs';
-import { buildCommitPayload, commitPayloadHash, executeReveal } from '../commit.mjs';
+import { buildCommitPayload, commitPayloadHash, executeReveal, binsHash } from '../commit.mjs';
 import { loadConfig } from '../state.mjs';
 import { LotteryError, ERR } from '../errors.mjs';
 import { freshConfig, makeBin, U, ALL8 } from './helpers.mjs';
@@ -295,6 +295,43 @@ describe('承諾—開籤流程（SPEC §4.2）', () => {
       () => executeReveal({ config, bins, payload, drandResult: { ...FIXTURE, chainHash: 'ff'.repeat(32) } }),
       /鏈雜湊/
     );
+  });
+
+  test('extra 欄位會併入承諾，因而同樣在亂數產生前被固定', () => {
+    const config = drandConfig();
+    const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+    const payload = buildCommitPayload({
+      config, bins, caseTypeId: 'jinsu',
+      items: [{ caseNo: 'A' }],
+      operator: 'x', targetRound: 1, batchId: 'B-1', at: 'now',
+      extra: { redraw: { originalRecordId: 'R-000009', recusedUnitId: U.忠 } },
+    });
+    assert.equal(payload.redraw.originalRecordId, 'R-000009');
+
+    // 迴避重抽的關鍵欄位若不納入承諾，就成了開籤時才決定的變數
+    const tampered = structuredClone(payload);
+    tampered.redraw.recusedUnitId = U.孝;
+    assert.notEqual(commitPayloadHash(payload), commitPayloadHash(tampered));
+  });
+
+  test('binsHash 可偵測承諾與開籤之間的籤筒變動（迴避重抽的守衛）', () => {
+    const a = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+    const b = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+    assert.equal(binsHash(a), binsHash(b), '相同內容應得到相同雜湊');
+
+    b.jinsu.tickets.push(U.忠);
+    assert.notEqual(binsHash(a), binsHash(b), '籤數改變須被偵測');
+
+    const c = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+    c.jinsu.cycle += 1;
+    assert.notEqual(binsHash(a), binsHash(c), '輪次改變須被偵測');
+
+    const d = { jinsu: makeBin(ALL8, { carryOverSkips: { [U.忠]: 1 } }), jinzhongsu: makeBin(ALL8) };
+    assert.notEqual(binsHash(a), binsHash(d), '欠籤改變須被偵測');
+
+    // 只比對指定籤筒時，其他籤筒的變動不應影響結果
+    const e = { jinsu: makeBin(ALL8), jinzhongsu: makeBin([U.忠]) };
+    assert.equal(binsHash(a, ['jinsu']), binsHash(e, ['jinsu']));
   });
 
   test('開籤結果含完整的 drand 佐證資料', () => {

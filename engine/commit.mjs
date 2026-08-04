@@ -30,8 +30,13 @@ import { LotteryError, ERR } from './errors.mjs';
  * 內容涵蓋所有會影響結果的因素，任一項在開籤前被更動，
  * commitPayloadHash 就會改變，開籤推導出的結果也會完全不同。
  */
+/**
+ * @param {object} [extra] 額外併入酬載的欄位。
+ *   迴避重抽用它承載 redraw 區塊與「承諾當下的籤筒雜湊」，
+ *   使這些資訊同樣在亂數產生前就被固定，不能事後更動。
+ */
 export function buildCommitPayload({
-  config, bins, caseTypeId, items, operator, targetRound, batchId, at,
+  config, bins, caseTypeId, items, operator, targetRound, batchId, at, extra = {},
 }) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new LotteryError(ERR.CHAIN_BROKEN, '承諾酬載必須至少包含一件案件');
@@ -80,7 +85,21 @@ export function buildCommitPayload({
       chainHash: config.drand.chainHash,
       targetRound,
     },
+    ...extra,
   };
+}
+
+/** 籤筒集合的雜湊，用於確認狀態在承諾與開籤之間未被更動 */
+export function binsHash(bins, binIds = null) {
+  const ids = (binIds ?? Object.keys(bins)).slice().sort();
+  return hashObject(
+    Object.fromEntries(
+      ids.map((id) => [
+        id,
+        { t: bins[id].tickets, c: bins[id].cycle, o: bins[id].carryOverSkips },
+      ])
+    )
+  );
 }
 
 export function commitPayloadHash(payload) {
