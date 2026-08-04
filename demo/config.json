@@ -1,36 +1,35 @@
 {
   "schemaVersion": 1,
   "updatedAt": "2026-08-04T00:00:00+08:00",
-  "_note": "示範資料。案號與抽籤結果均為隨機模擬，非真實紀錄。",
   "courts": [
     {
-      "id": "ct-01",
-      "name": "刑事第一庭",
-      "shortName": "刑一",
+      "id": "ct-16",
+      "name": "第十六庭",
+      "shortName": "16庭",
       "order": 1,
       "active": true,
       "color": "blue"
     },
     {
-      "id": "ct-02",
-      "name": "刑事第二庭",
-      "shortName": "刑二",
+      "id": "ct-17",
+      "name": "第十七庭",
+      "shortName": "17庭",
       "order": 2,
       "active": true,
       "color": "green"
     },
     {
-      "id": "ct-03",
-      "name": "刑事第三庭",
-      "shortName": "刑三",
+      "id": "ct-18",
+      "name": "第十八庭",
+      "shortName": "18庭",
       "order": 3,
       "active": true,
       "color": "amber"
     },
     {
-      "id": "ct-04",
-      "name": "刑事第四庭",
-      "shortName": "刑四",
+      "id": "ct-19",
+      "name": "第十九庭",
+      "shortName": "19庭",
       "order": 4,
       "active": true,
       "color": "purple"
@@ -39,8 +38,8 @@
   "units": [
     {
       "id": "un-01",
-      "name": "忠股",
-      "courtId": "ct-01",
+      "name": "理股",
+      "courtId": "ct-16",
       "order": 1,
       "active": true,
       "ticketsPerCycle": 1,
@@ -48,8 +47,8 @@
     },
     {
       "id": "un-02",
-      "name": "孝股",
-      "courtId": "ct-01",
+      "name": "實股",
+      "courtId": "ct-16",
       "order": 2,
       "active": true,
       "ticketsPerCycle": 1,
@@ -57,8 +56,8 @@
     },
     {
       "id": "un-03",
-      "name": "仁股",
-      "courtId": "ct-02",
+      "name": "律股",
+      "courtId": "ct-17",
       "order": 3,
       "active": true,
       "ticketsPerCycle": 1,
@@ -66,8 +65,8 @@
     },
     {
       "id": "un-04",
-      "name": "愛股",
-      "courtId": "ct-02",
+      "name": "靖股",
+      "courtId": "ct-17",
       "order": 4,
       "active": true,
       "ticketsPerCycle": 1,
@@ -75,8 +74,8 @@
     },
     {
       "id": "un-05",
-      "name": "信股",
-      "courtId": "ct-03",
+      "name": "寧股",
+      "courtId": "ct-18",
       "order": 5,
       "active": true,
       "ticketsPerCycle": 1,
@@ -84,8 +83,8 @@
     },
     {
       "id": "un-06",
-      "name": "義股",
-      "courtId": "ct-03",
+      "name": "全股",
+      "courtId": "ct-18",
       "order": 6,
       "active": true,
       "ticketsPerCycle": 1,
@@ -93,8 +92,8 @@
     },
     {
       "id": "un-07",
-      "name": "和股",
-      "courtId": "ct-04",
+      "name": "衛股",
+      "courtId": "ct-19",
       "order": 7,
       "active": true,
       "ticketsPerCycle": 1,
@@ -102,8 +101,8 @@
     },
     {
       "id": "un-08",
-      "name": "平股",
-      "courtId": "ct-04",
+      "name": "治股",
+      "courtId": "ct-19",
       "order": 8,
       "active": true,
       "ticketsPerCycle": 1,
@@ -171,5 +170,6 @@
     "warnOnPatterns": [
       "[A-Z][12][0-9]{8}"
     ]
-  }
+  },
+  "_note": "示範資料。案號與抽籤結果均為隨機模擬，非真實紀錄。"
 }

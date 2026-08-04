@@ -1,22 +1,57 @@
 /**
  * 測試共用工具
+ *
+ * 測試刻意**不讀取** data/config.json，改用本檔自訂的固定 fixture。
+ * 理由：庭別與股別名稱是會隨組織調整而變動的營運資料，若測試綁在正式設定上，
+ * 日後改一個股名就會弄壞整批演算法測試，掩蓋真正的問題。
+ * 演算法測試要驗的是規則本身，與叫什麼名字無關。
+ *
+ * 正式設定的結構正確性另由 config.test.mjs 檢查。
  */
 
-import { readFileSync } from 'node:fs';
 import { courtIdOf } from '../lottery.mjs';
 
-const RAW_CONFIG = JSON.parse(
-  readFileSync(new URL('../../data/config.json', import.meta.url), 'utf8')
-);
+/** 測試 fixture：4 庭 × 2 股，每股每輪 1 支籤 */
+const FIXTURE = {
+  schemaVersion: 1,
+  courts: [
+    { id: 'ct-01', name: '測試一庭', shortName: '測一', order: 1, active: true, color: 'blue' },
+    { id: 'ct-02', name: '測試二庭', shortName: '測二', order: 2, active: true, color: 'green' },
+    { id: 'ct-03', name: '測試三庭', shortName: '測三', order: 3, active: true, color: 'amber' },
+    { id: 'ct-04', name: '測試四庭', shortName: '測四', order: 4, active: true, color: 'purple' },
+  ],
+  units: [
+    { id: 'un-01', name: '忠股', courtId: 'ct-01', order: 1, active: true, ticketsPerCycle: 1 },
+    { id: 'un-02', name: '孝股', courtId: 'ct-01', order: 2, active: true, ticketsPerCycle: 1 },
+    { id: 'un-03', name: '仁股', courtId: 'ct-02', order: 3, active: true, ticketsPerCycle: 1 },
+    { id: 'un-04', name: '愛股', courtId: 'ct-02', order: 4, active: true, ticketsPerCycle: 1 },
+    { id: 'un-05', name: '信股', courtId: 'ct-03', order: 5, active: true, ticketsPerCycle: 1 },
+    { id: 'un-06', name: '義股', courtId: 'ct-03', order: 6, active: true, ticketsPerCycle: 1 },
+    { id: 'un-07', name: '和股', courtId: 'ct-04', order: 7, active: true, ticketsPerCycle: 1 },
+    { id: 'un-08', name: '平股', courtId: 'ct-04', order: 8, active: true, ticketsPerCycle: 1 },
+  ],
+  caseTypes: [
+    { id: 'jinsu', name: '金訴', order: 1, active: true },
+    { id: 'jinzhongsu', name: '金重訴', order: 2, active: true },
+  ],
+  rules: {
+    refillWhenRemainingAtMost: 1,
+    refillWhenTwoTicketsSameCourt: true,
+    defaultOffsetScope: 'sameCaseType',
+    maxOffsetPerCase: 10,
+    maxRefillLoops: 20,
+    redrawReturnsTicket: true,
+  },
+};
 
 /** 每個測試取得獨立的設定副本，避免互相污染 */
 export function freshConfig(overrides = {}) {
-  const c = structuredClone(RAW_CONFIG);
+  const c = structuredClone(FIXTURE);
   if (overrides.rules) Object.assign(c.rules, overrides.rules);
   return c;
 }
 
-/** 股別代號速查（刑一：忠孝／刑二：仁愛／刑三：信義／刑四：和平） */
+/** 股別代號速查（測一：忠孝／測二：仁愛／測三：信義／測四：和平） */
 export const U = {
   忠: 'un-01',
   孝: 'un-02',
@@ -39,7 +74,7 @@ export function makeBin(tickets, opts = {}) {
   };
 }
 
-/** 建立籤筒集合，未指定的案類給予空籤筒 */
+/** 建立籤筒集合，未指定的案類給予滿籤筒 */
 export function makeBins(spec) {
   const out = {};
   for (const k of ['jinsu', 'jinzhongsu']) {
