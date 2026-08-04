@@ -2,31 +2,129 @@
   "schemaVersion": 1,
   "appVersion": "1.1.0",
   "_appVersion": "前端版本號。修改 public/ 底下的檔案後必須同步提高此值與各頁面的 APP_VERSION，否則使用者的瀏覽器會繼續執行快取中的舊版程式。engine/test/version.test.mjs 會檢查兩者一致。",
-  "updatedAt": "2026-08-04T00:00:00+08:00",
-
+  "updatedAt": "2026-08-04T21:21:15.407+08:00",
   "courts": [
-    { "id": "ct-16", "name": "第十六庭", "shortName": "16庭", "order": 1, "active": true, "color": "blue" },
-    { "id": "ct-17", "name": "第十七庭", "shortName": "17庭", "order": 2, "active": true, "color": "green" },
-    { "id": "ct-18", "name": "第十八庭", "shortName": "18庭", "order": 3, "active": true, "color": "amber" },
-    { "id": "ct-19", "name": "第十九庭", "shortName": "19庭", "order": 4, "active": true, "color": "purple" }
+    {
+      "id": "ct-16",
+      "name": "第十六庭",
+      "shortName": "16庭",
+      "order": 1,
+      "active": true,
+      "color": "blue"
+    },
+    {
+      "id": "ct-17",
+      "name": "第十七庭",
+      "shortName": "17庭",
+      "order": 2,
+      "active": true,
+      "color": "green"
+    },
+    {
+      "id": "ct-18",
+      "name": "第十八庭",
+      "shortName": "18庭",
+      "order": 3,
+      "active": true,
+      "color": "amber"
+    },
+    {
+      "id": "ct-19",
+      "name": "第十九庭",
+      "shortName": "19庭",
+      "order": 4,
+      "active": true,
+      "color": "purple"
+    }
   ],
-
   "units": [
-    { "id": "un-01", "name": "理股", "courtId": "ct-16", "order": 1, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-02", "name": "實股", "courtId": "ct-16", "order": 2, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-03", "name": "律股", "courtId": "ct-17", "order": 3, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-04", "name": "靖股", "courtId": "ct-17", "order": 4, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-05", "name": "寧股", "courtId": "ct-18", "order": 5, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-06", "name": "全股", "courtId": "ct-18", "order": 6, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-07", "name": "衛股", "courtId": "ct-19", "order": 7, "active": true, "ticketsPerCycle": 1, "note": "" },
-    { "id": "un-08", "name": "治股", "courtId": "ct-19", "order": 8, "active": true, "ticketsPerCycle": 1, "note": "" }
+    {
+      "id": "un-01",
+      "name": "理股",
+      "courtId": "ct-16",
+      "order": 1,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-02",
+      "name": "實股",
+      "courtId": "ct-16",
+      "order": 2,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-03",
+      "name": "律股",
+      "courtId": "ct-17",
+      "order": 3,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-04",
+      "name": "靖股",
+      "courtId": "ct-17",
+      "order": 4,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-05",
+      "name": "寧股",
+      "courtId": "ct-18",
+      "order": 5,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-06",
+      "name": "全股",
+      "courtId": "ct-18",
+      "order": 6,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-07",
+      "name": "衛股",
+      "courtId": "ct-19",
+      "order": 7,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    },
+    {
+      "id": "un-08",
+      "name": "治股",
+      "courtId": "ct-19",
+      "order": 8,
+      "active": true,
+      "ticketsPerCycle": 1,
+      "note": ""
+    }
   ],
-
   "caseTypes": [
-    { "id": "jinsu", "name": "金訴", "order": 1, "active": true },
-    { "id": "jinzhongsu", "name": "金重訴", "order": 2, "active": true }
+    {
+      "id": "jinsu",
+      "name": "金訴",
+      "order": 1,
+      "active": true
+    },
+    {
+      "id": "jinzhongsu",
+      "name": "金重訴",
+      "order": 2,
+      "active": true
+    }
   ],
-
   "rules": {
     "refillWhenRemainingAtMost": 1,
     "refillWhenTwoTicketsSameCourt": true,
@@ -35,7 +133,6 @@
     "maxRefillLoops": 20,
     "redrawReturnsTicket": true
   },
-
   "drand": {
     "_note": "drand quicknet 鏈。參數於 2026-08-04 自 https://api.drand.sh 取得並經 BLS 驗簽確認。",
     "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
@@ -53,7 +150,6 @@
       "https://drand.cloudflare.com"
     ]
   },
-
   "github": {
     "owner": "Caf555",
     "repo": "selection",
@@ -61,26 +157,33 @@
     "workflowFile": "draw.yml",
     "_note": "抽籤台以此發動工作流程，並自 raw.githubusercontent 讀取剛寫入的結果（GitHub Pages 於推送後需約一分鐘才更新）"
   },
-
   "ui": {
     "baseFontPx": 28,
     "resultFontPx": 128,
     "animation": false,
     "highContrast": true
   },
-
   "notify": {
-    "web": { "enabled": true },
+    "web": {
+      "enabled": true
+    },
     "line": {
-      "enabled": false,
+      "enabled": true,
       "mode": "broadcast",
       "includeCaseNo": true,
       "_mode": "broadcast＝推播給所有加官方帳號好友的人，不需 groupId；push＝推播至指定群組，需設定 LINE_GROUP_IDS"
     }
   },
-
   "privacy": {
-    "forbiddenFieldHints": ["當事人姓名", "身分證字號", "出生年月日", "住址", "電話"],
-    "warnOnPatterns": ["[A-Z][12][0-9]{8}"]
+    "forbiddenFieldHints": [
+      "當事人姓名",
+      "身分證字號",
+      "出生年月日",
+      "住址",
+      "電話"
+    ],
+    "warnOnPatterns": [
+      "[A-Z][12][0-9]{8}"
+    ]
   }
 }
