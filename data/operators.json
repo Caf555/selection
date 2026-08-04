@@ -3,7 +3,7 @@
   "_note": "抽籤授權清單。撤銷授權請填入 validTo，不要刪除該筆，以保留稽核紀錄。",
   "operators": [
     {
-      "githubLogin": "caf555",
+      "githubLogin": "Caf555",
       "displayName": "系統管理者",
       "role": "ADMIN",
       "validFrom": "2026-08-04",

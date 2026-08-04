@@ -143,10 +143,19 @@ export function checkPrivacy(config, text) {
   return true;
 }
 
-/** 檢查操作者授權（SPEC §8.2 第 3 層） */
+/**
+ * 檢查操作者授權（SPEC §8.2 第 3 層）
+ *
+ * 帳號比對必須忽略大小寫：GitHub 帳號本身大小寫不敏感，
+ * 但 API 與 github.actor 回傳的是註冊時的正規大小寫（例如 Caf555）。
+ * 若在 operators.json 寫成小寫並做精確比對，授權會無故被拒。
+ */
 export function checkOperator(operators, githubLogin, requiredRole = 'DRAW_OPERATOR', today = null) {
   const now = today ?? new Date().toISOString().slice(0, 10);
-  const op = operators.operators.find((o) => o.githubLogin === githubLogin);
+  const key = String(githubLogin ?? '').toLowerCase();
+  const op = operators.operators.find(
+    (o) => String(o.githubLogin ?? '').toLowerCase() === key
+  );
 
   if (!op) return { allowed: false, reason: `${githubLogin} 不在授權清單內` };
   if (op.validFrom && now < op.validFrom) {
