@@ -25,7 +25,9 @@
 
 <script type="module">
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime, counts } from './js/data.mjs';
-import { courtBadge, statusBadge, nav, demoBanner, esc, fail } from './js/ui.mjs';
+import { courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner } from './js/ui.mjs';
+
+const APP_VERSION = '1.1.0';
 
 document.getElementById('nav').innerHTML = nav('history.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -34,6 +36,7 @@ const app = document.getElementById('app');
 
 try {
   const { config, history } = await loadAll();
+  document.getElementById('banner').innerHTML += versionBanner(config, APP_VERSION);
   const all = effectiveDraws(history).map((r) => applyAmends(history, r)).reverse();
 
   app.innerHTML = `

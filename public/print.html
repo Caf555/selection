@@ -64,12 +64,16 @@
 
 <script type="module">
 import { loadAll, caseTypeOf, applyAmends, fmtTime } from './js/data.mjs';
-import { courtStyle, esc, fail } from './js/ui.mjs';
+import { courtStyle, esc, fail, versionBanner } from './js/ui.mjs';
+
+const APP_VERSION = '1.1.0';
 
 const app = document.getElementById('app');
 
 try {
   const { config, history } = await loadAll();
+  const stale = versionBanner(config, APP_VERSION);
+  if (stale) document.querySelector('.noprint').insertAdjacentHTML('afterend', stale);
   const id = new URLSearchParams(location.search).get('id');
   const raw = history.find((r) => r.recordId === id);
 

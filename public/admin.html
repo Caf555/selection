@@ -53,8 +53,10 @@
 
 <script type="module">
 import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
-import { courtBadge, nav, esc, fail } from './js/ui.mjs';
+import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
+
+const APP_VERSION = '1.1.0';
 
 document.getElementById('nav').innerHTML = nav('admin.html');
 const app = document.getElementById('app');
@@ -436,7 +438,11 @@ try {
     if (res.ok) operators = await res.json();
   } catch { /* 授權清單讀不到時仍可管理其他項目 */ }
 
-  if (!config.github?.owner) {
+  // 設定變更會影響誰能被抽中，舊版程式可能送出與畫面不符的參數，因此阻擋操作
+  const stale = versionBanner(config, APP_VERSION, { blocking: true });
+  if (stale) {
+    app.innerHTML = stale;
+  } else if (!config.github?.owner) {
     app.innerHTML = `<div class="note warn">config.json 缺少 github 設定，管理頁無法運作。</div>`;
   } else if (!gh.getToken()) {
     renderToken();

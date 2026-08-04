@@ -94,8 +94,10 @@
 
 <script type="module">
 import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
-import { courtBadge, nav, esc, fail } from './js/ui.mjs';
+import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
+
+const APP_VERSION = '1.1.0';
 
 document.getElementById('nav').innerHTML = nav('draw.html');
 const app = document.getElementById('app');
@@ -593,7 +595,12 @@ try {
   config = d.config;
   state = d.state;
 
-  if (!config.github?.owner) {
+  // 抽籤會改變籤筒狀態，舊版程式可能對結果做出錯誤判斷而誘使操作者重抽，
+  // 因此版本不符時直接阻擋，不只是警示。
+  const stale = versionBanner(config, APP_VERSION, { blocking: true });
+  if (stale) {
+    app.innerHTML = stale;
+  } else if (!config.github?.owner) {
     app.innerHTML = `<div class="note warn">config.json 缺少 github 設定，抽籤台無法運作。</div>`;
   } else if (!gh.getToken()) {
     renderToken();

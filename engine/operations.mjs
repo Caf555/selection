@@ -15,28 +15,71 @@ import { LotteryError, ERR } from './errors.mjs';
 /** 可用 AMEND 更正的欄位（皆不影響籤筒狀態，SPEC §7.2） */
 export const AMENDABLE_FIELDS = ['caseNo', 'note', 'excludeReason'];
 
+/** 籤筒狀態的比較用摘要 */
+function binFingerprint(bin) {
+  return JSON.stringify({
+    t: bin.tickets,
+    c: bin.cycle,
+    o: Object.fromEntries(Object.entries(bin.carryOverSkips ?? {}).sort()),
+  });
+}
+
 /**
- * 檢查某筆 DRAW 是否為其所影響籤筒的最近一筆，且其後未再有狀態變動。
- * VOID 與 REDRAW 皆以此為前提（SPEC §7.4）。
+ * 檢查某筆抽籤的效果是否仍原封不動地留在籤筒上。
+ * VOID 與 REDRAW 皆以此為前提（SPEC §7.4）：作廢就是把籤筒回復到該次抽籤前，
+ * 唯有「該次之後籤筒沒有淨變動」時，這樣回復才是正確的。
+ *
+ * ── 為什麼用狀態比對而非掃描後續紀錄 ─────────────────────────
+ *
+ * 先前的作法是掃描其後的紀錄，只要有任何一筆動過同一個籤筒就拒絕。
+ * 這在批次抽籤後逐筆作廢時會誤判：
+ *
+ *     R-000004 抽籤 ┐
+ *     R-000005 抽籤 ┘ 同一批
+ *     R-000006 作廢 R-000005      ← 效果已被回復
+ *
+ * 此時要作廢 R-000004，舊邏輯看到「後面有 R-000005 這筆 DRAW」就擋下，
+ * 但 R-000005 早已作廢、對籤筒不再有任何影響，籤筒其實正好等於
+ * R-000004 抽完後的狀態，作廢是安全的。使用者因而卡在「叫我從最新一筆
+ * 往回處理，但最新一筆就是它」的死路。
+ *
+ * 直接比對籤筒現況與該筆的 binsAfter 才是正確的判準：它不必推理紀錄之間
+ * 的相互抵銷關係，只問「現在的狀態是不是就是當時的狀態」。
  */
-export function assertIsLatestForBins(history, targetRecord) {
-  const touched = Object.keys(targetRecord.binsBefore ?? { [targetRecord.caseTypeId]: 1 });
-  const idx = history.findIndex((r) => r.recordId === targetRecord.recordId);
-  if (idx === -1) {
-    throw new LotteryError(ERR.VOID_NOT_LATEST, `找不到紀錄 ${targetRecord.recordId}`);
+export function assertBinsUnchangedSince(bins, targetRecord, history = []) {
+  const after = targetRecord.binsAfter;
+  if (!after || Object.keys(after).length === 0) {
+    throw new LotteryError(
+      ERR.VOID_NOT_LATEST,
+      `紀錄 ${targetRecord.recordId} 沒有抽籤後的籤筒快照，無法確認可否安全回復。`
+    );
   }
 
-  for (let i = idx + 1; i < history.length; i++) {
-    const r = history[i];
-    const changesBins = ['DRAW', 'REDRAW', 'OFFSET_AMEND', 'VOID', 'BIN_ADJUST', 'OFFLINE_BACKFILL'];
-    if (!changesBins.includes(r.type)) continue;
-    const rTouched = Object.keys(r.binsBefore ?? (r.caseTypeId ? { [r.caseTypeId]: 1 } : {}));
-    if (rTouched.some((b) => touched.includes(b))) {
+  for (const binId of Object.keys(after)) {
+    const now = bins[binId];
+    if (!now) {
+      throw new LotteryError(ERR.UNKNOWN_CASETYPE, `籤筒不存在：${binId}`);
+    }
+    if (binFingerprint(now) !== binFingerprint(after[binId])) {
+      // 找出仍在生效、且動過同一籤筒的後續紀錄，讓訊息能指出該先處理哪一筆
+      const voided = new Set(history.filter((r) => r.type === 'VOID').map((r) => r.targetRecordId));
+      const idx = history.findIndex((r) => r.recordId === targetRecord.recordId);
+      const blocker = history.slice(idx + 1).find((r) => {
+        if (!['DRAW', 'REDRAW', 'OFFSET_AMEND', 'BIN_ADJUST', 'OFFLINE_BACKFILL'].includes(r.type)) return false;
+        if (voided.has(r.recordId)) return false; // 已作廢者不再有效果
+        const t = Object.keys(r.binsBefore ?? (r.caseTypeId ? { [r.caseTypeId]: 1 } : {}));
+        return t.includes(binId);
+      });
+
       throw new LotteryError(
         ERR.VOID_NOT_LATEST,
-        `紀錄 ${targetRecord.recordId} 之後，籤筒已被 ${r.recordId}（${r.type}）變動，` +
-          `無法直接作廢。請由最新一筆往回逐筆處理。`,
-        { blockedBy: r.recordId }
+        `${targetRecord.recordId} 抽籤後，籤筒「${binId}」已再度變動，無法直接作廢。` +
+          (blocker
+            ? `\n  請先處理 ${blocker.recordId}（${blocker.type}）。`
+            : `\n  籤筒現況與該次抽籤後的狀態不符，請先確認期間發生了什麼變動。`) +
+          `\n  當時 ${after[binId].tickets.length} 支（第 ${after[binId].cycle} 輪）` +
+          `／目前 ${now.tickets.length} 支（第 ${now.cycle} 輪）`,
+        { blockedBy: blocker?.recordId ?? null, binId }
       );
     }
   }
@@ -158,7 +201,7 @@ export function applyVoid({ bins, history, targetRecord, reason }) {
   if (targetRecord.voided) {
     throw new LotteryError(ERR.VOID_NOT_LATEST, `紀錄 ${targetRecord.recordId} 已作廢`);
   }
-  assertIsLatestForBins(history, targetRecord);
+  assertBinsUnchangedSince(bins, targetRecord, history);
 
   const restored = [];
   for (const binId of Object.keys(targetRecord.binsBefore)) {
@@ -204,7 +247,7 @@ export function applyRedraw({
       `迴避股 ${recusedUnitId} 與原抽籤結果 ${originalRecord.resultUnitId} 不符`
     );
   }
-  assertIsLatestForBins(history, originalRecord);
+  assertBinsUnchangedSince(bins, originalRecord, history);
 
   // 1. 回復至原次抽籤前的狀態
   for (const binId of Object.keys(originalRecord.binsBefore)) {

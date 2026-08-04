@@ -33,7 +33,7 @@ import {
 import { latestRound, targetRoundFor, waitForRound } from './drand.mjs';
 import { buildCommitPayload, commitPayloadHash, executeReveal, binsHash } from './commit.mjs';
 import { buildDrawRecord, sealRecord, makeBatchId } from './records.mjs';
-import { assertIsLatestForBins } from './operations.mjs';
+import { assertBinsUnchangedSince } from './operations.mjs';
 import { refillLoop } from './lottery.mjs';
 import { LotteryError } from './errors.mjs';
 
@@ -113,8 +113,8 @@ async function doCommit() {
     die(`${IN.recordId} 已經重抽過了`);
   }
 
-  // 必須是該籤筒最近一筆，否則回復的會是錯誤的籤筒狀態
-  assertIsLatestForBins(history, original);
+  // 籤筒必須仍停在原次抽籤後的狀態，否則回復的會是錯誤的籤筒
+  assertBinsUnchangedSince(binsFromState(state), original, history);
 
   say(`- 原抽籤：\`${original.recordId}\`　${original.caseNo}　→　**${original.resultUnitName}**`);
   say(`- 迴避事由：${IN.reason}`);

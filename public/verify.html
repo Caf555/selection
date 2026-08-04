@@ -52,7 +52,9 @@
 <script type="module">
 import { loadAll, isDemo, caseTypeOf, fmtTime } from './js/data.mjs';
 import { hashObject, canonicalizeOmitting } from './js/hashweb.mjs';
-import { nav, demoBanner, esc, fail, courtBadge } from './js/ui.mjs';
+import { nav, demoBanner, esc, fail, courtBadge, versionBanner } from './js/ui.mjs';
+
+const APP_VERSION = '1.1.0';
 
 document.getElementById('nav').innerHTML = nav('verify.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -77,6 +79,7 @@ function checkList(items) {
 
 try {
   const { config, history } = await loadAll();
+  document.getElementById('banner').innerHTML += versionBanner(config, APP_VERSION);
 
   /* ── 全部歷史的雜湊鏈 ─────────────────────────────────── */
   const chainEl = document.getElementById('chain');

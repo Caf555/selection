@@ -28,7 +28,9 @@
 
 <script type="module">
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime } from './js/data.mjs';
-import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail } from './js/ui.mjs';
+import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner } from './js/ui.mjs';
+
+const APP_VERSION = '1.1.0';
 
 document.getElementById('nav').innerHTML = nav('index.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -37,6 +39,7 @@ const app = document.getElementById('app');
 
 try {
   const { config, state, history } = await loadAll();
+  document.getElementById('banner').innerHTML += versionBanner(config, APP_VERSION);
 
   document.getElementById('updated').textContent =
     `狀態更新於 ${fmtTime(state.updatedAt)}　累計序號 ${state.seq}　歷史紀錄 ${history.length} 筆`;

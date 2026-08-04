@@ -140,6 +140,39 @@ export function demoBanner(isDemo) {
   );
 }
 
+/**
+ * 檢查頁面是否為舊版（SPEC §9.1）
+ *
+ * GitHub Pages 會對 HTML 與 JS 設定快取，更新後使用者的瀏覽器仍會繼續執行
+ * 舊版程式直到快取過期。在本系統中這有具體風險：舊版抽籤台曾把「已完成但
+ * 暫時讀不到結果」顯示成「抽籤未完成」，使用者照著重抽就會多消耗一支籤、
+ * 扭曲籤筒，而且不會察覺。
+ *
+ * config.json 一律以 no-store 取得，必為最新；頁面內嵌的版本號則會隨 HTML
+ * 一起被快取。兩者不符即代表這份頁面是舊的。
+ *
+ * @param {object} config
+ * @param {string} pageVersion 頁面內嵌的版本號
+ * @param {{blocking?: boolean}} [opt] blocking＝阻擋操作（抽籤台等會改變狀態的頁面）
+ * @returns {string} 需要顯示的警示 HTML，無異常時為空字串
+ */
+export function versionBanner(config, pageVersion, { blocking = false } = {}) {
+  const latest = config.appVersion;
+  if (!latest || latest === pageVersion) return '';
+
+  const reload = `location.replace(location.pathname + '?_reload=' + Date.now() + location.hash)`;
+  return (
+    `<div class="note warn" role="alert" style="margin-bottom:1.2rem">` +
+    `<strong>本頁不是最新版本</strong>（頁面 ${esc(pageVersion)}，最新 ${esc(latest)}）<br><br>` +
+    (blocking
+      ? `為避免依舊版程式做出錯誤判斷，<strong>請先重新載入再操作</strong>。<br><br>`
+      : `顯示內容可能不正確。<br><br>`) +
+    `<button class="btn" type="button" onclick="${reload}">重新載入最新版</button>` +
+    `<div style="margin-top:.6rem;font-size:0.9rem">若仍顯示舊版，請按 Ctrl + Shift + R 強制重新載入。</div>` +
+    `</div>`
+  );
+}
+
 export function fail(container, err) {
   container.innerHTML =
     `<div class="note warn" role="alert"><strong>無法載入資料</strong><br>${esc(err.message)}` +
