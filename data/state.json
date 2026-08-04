@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "seq": 0,
-  "updatedAt": "2026-08-04T03:06:54.250Z",
+  "seq": 1,
+  "updatedAt": "2026-08-04T14:43:51.992+08:00",
   "bins": {
     "jinsu": {
       "tickets": [
@@ -35,5 +35,5 @@
     }
   },
   "prevStateHash": null,
-  "stateHash": "sha256:35f831577a054e7689778fe56c7faba3d9f002aae02e0ff94b5b36bab9d8ab9c"
+  "stateHash": "sha256:a6b7bbb073d598e9f7932d70ba2893b8f532c38b42e14bd5c58322f22f258050"
 }
