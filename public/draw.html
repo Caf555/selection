@@ -450,12 +450,32 @@ async function run() {
       return renderFailure(done, url);
     }
 
-    renderProgress(4);
-    const history = await gh.fetchFreshHistory(config);
+    renderProgress(4, '<br><br>剛推送的資料需要幾秒才會傳播完成，系統會自動重試。');
+    const history = await gh.fetchFreshHistory(config, seqBefore);
     const fresh = history.filter((r) => r.type === 'DRAW' && r.seq > seqBefore);
     renderResult(fresh, url);
 
   } catch (e) {
+    // 抽籤已成功、只是暫時讀不到資料時，不可顯示成「抽籤失敗」——
+    // 那會讓操作者以為要重抽，而重抽會再消耗一支籤。
+    if (e.dataLagOnly) {
+      app.innerHTML = chrome(6, `
+        <section>
+          <h2 class="sec">抽籤已完成</h2>
+          <div class="note">
+            結果已寫入並推送成功，<strong>不會遺失，也不需要重抽</strong>。<br>
+            本頁暫時讀不到最新資料（GitHub 的內容傳播有數秒延遲）。
+          </div>
+          <p class="note" style="margin-top:1rem">
+            執行紀錄：<a href="${url}" target="_blank" rel="noopener">${url}</a>
+          </p>
+          <div class="row" style="margin-top:1.2rem">
+            <a class="btn" href="index.html">前往公開看板查看結果</a>
+            <a class="btn" href="history.html">歷史查詢</a>
+          </div>
+        </section>`);
+      return;
+    }
     app.innerHTML = chrome(5, `
       <section>
         <div class="note warn" role="alert">
@@ -510,6 +530,9 @@ function renderResult(records, url) {
       </div>
     </div>`).join('');
 
+  const voidUrl = gh.workflowUrl(config, 'void.yml');
+  const ids = records.map((r) => r.recordId).join('、');
+
   app.innerHTML = chrome(6, `
     <section>
       <h2 class="sec">抽籤完成</h2>
@@ -519,6 +542,26 @@ function renderResult(records, url) {
       <p class="note" style="margin-top:1rem">
         執行紀錄（公開可查）：<a href="${url}" target="_blank" rel="noopener">${url}</a>
       </p>
+
+      ${records.length === 0 ? '' : `
+      <details style="margin-top:1.2rem">
+        <summary style="font-size:1rem;font-weight:700;cursor:pointer;min-height:64px;display:flex;align-items:center">
+          抽錯了怎麼辦？
+        </summary>
+        <div class="note" style="margin-top:0.6rem">
+          <strong>紀錄無法刪除，這是設計，不是缺漏。</strong>
+          歷史只增不刪才能讓雜湊鏈成立；能刪除的紀錄等於沒有紀錄。<br><br>
+          抽錯時的正確做法是<strong>作廢</strong>：原紀錄保留並標示為已作廢，
+          籤筒的籤數、輪次與抵分欠籤會完整回復到抽籤前，不影響後續分案的公平性。<br><br>
+          本次紀錄編號：<strong>${esc(ids)}</strong><br><br>
+          <a class="btn" href="${voidUrl}" target="_blank" rel="noopener">前往作廢（需 ADMIN）</a>
+          <br><br>
+          在該頁按 <strong>Run workflow</strong>，填入上面的紀錄編號與作廢理由即可。<br>
+          ⚠ 作廢只能針對該籤筒<strong>最近一筆</strong>，若已經抽了後面的案件，
+          必須由最新一筆往回逐筆處理。
+        </div>
+      </details>`}
+
       <div class="row" style="margin-top:1.2rem">
         <a class="btn" href="index.html">前往公開看板</a>
         <button class="btn" data-back="1" type="button">再抽一批</button>

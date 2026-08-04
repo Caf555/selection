@@ -145,24 +145,54 @@ export async function waitRun(config, token, runId, { onTick = null, timeoutMs =
  * 讀取剛寫入的資料。
  *
  * 不從 GitHub Pages 讀 —— 推送後 Pages 需約一分鐘才重新部署，
- * 剛抽完的結果會讀到舊的。raw.githubusercontent 則是即時的。
+ * 剛抽完的結果會讀到舊的。raw.githubusercontent 快得多。
+ *
+ * 但 raw 也有 CDN 快取，會出現兩種延遲：
+ *   1. 剛推送的內容尚未傳播到邊緣節點
+ *   2. repo 由私有轉公開後，先前的 404 仍留在快取中
+ * 因此必須重試到「確實看見新紀錄」為止，不能只試一次就報錯。
+ *
+ * @param {number} minSeq 必須讀到 seq 大於此值的紀錄才算成功
  */
-export async function fetchFreshHistory(config) {
+export async function fetchFreshHistory(config, minSeq = -1, { attempts = 12, intervalMs = 2500 } = {}) {
   const g = config.github;
-  const url = `https://raw.githubusercontent.com/${g.owner}/${g.repo}/${g.branch}/data/history.jsonl?t=${Date.now()}`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error(
-      res.status === 404
-        ? '無法讀取最新紀錄。若 repo 仍為私有，raw 網址需要授權，請直接查看執行紀錄。'
-        : `無法讀取最新紀錄（HTTP ${res.status}）`
-    );
+  let lastProblem = null;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const url = `https://raw.githubusercontent.com/${g.owner}/${g.repo}/${g.branch}/data/history.jsonl?t=${Date.now()}_${i}`;
+      const res = await fetch(url, { cache: 'no-store' });
+
+      if (res.ok) {
+        const text = await res.text();
+        const records = text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
+        const newest = records.length ? records[records.length - 1].seq : -1;
+        if (newest > minSeq) return records;
+        lastProblem = `最新紀錄仍是舊的（序號 ${newest}），資料尚未傳播`;
+      } else {
+        lastProblem = `HTTP ${res.status}`;
+      }
+    } catch (e) {
+      lastProblem = e.message;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
   }
-  const text = await res.text();
-  return text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l));
+
+  const e = new Error(
+    `抽籤已完成，但暫時讀不到最新紀錄（${lastProblem}）。\n` +
+      `結果已經寫入且不會遺失，請至公開看板查看。`
+  );
+  e.dataLagOnly = true;
+  throw e;
 }
 
 export function runUrl(config, runId) {
   const g = config.github;
   return `https://github.com/${g.owner}/${g.repo}/actions/runs/${runId}`;
+}
+
+/** 某個工作流程的執行頁（供結果頁提供「作廢這筆」的入口） */
+export function workflowUrl(config, file) {
+  const g = config.github;
+  return `https://github.com/${g.owner}/${g.repo}/actions/workflows/${file}`;
 }

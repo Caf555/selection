@@ -1,4 +1,4 @@
-# 每日全量稽核（第二層驗證）
+﻿# 每日全量稽核（第二層驗證）
 # SPEC.md §4.0、§11.2
 #
 # 抽籤路徑只做多端點交叉比對（零第三方相依）。本工作流程負責補上
@@ -28,12 +28,12 @@ jobs:
 
     steps:
       - name: 取出程式碼
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 設定 Node.js
-        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "24"
 
       # 稽核路徑才安裝 @noble/curves（BLS 驗簽用）。
       # 以 npm ci 依 package-lock.json 的完整性雜湊還原，版本不可漂移。
