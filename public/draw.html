@@ -48,6 +48,17 @@
   .checkgrid input { width:36px; height:36px; flex:none; accent-color:var(--accent); }
   .checkgrid label:has(input:checked) { border-color:var(--danger); background:var(--danger-bg); }
 
+  /* 逐件設定：一列一案，預設值不需操作，只有被調整過的列會highlight */
+  .caserow {
+    display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.7rem 1rem; align-items:center;
+    padding:.8rem .9rem; border:3px solid var(--border-strong); border-radius:var(--radius);
+    margin-bottom:.7rem;
+  }
+  .caserow.hot { border-color:var(--danger); background:var(--danger-bg); }
+  .caserow .cn { font-size:1.15rem; font-weight:700; word-break:break-all; }
+  .caserow .stepper button { width:64px; height:64px; font-size:1.9rem; }
+  .caserow .stepper .val { font-size:1.7rem; min-width:2.6rem; }
+
   .review { border:4px solid var(--border-strong); border-radius:var(--radius); overflow:hidden; }
   .review dl { margin:0; }
   .review div.r { display:grid; grid-template-columns:minmax(0,10rem) 1fr; gap:0.8rem;
@@ -97,21 +108,29 @@ import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
 import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 document.getElementById('nav').innerHTML = nav('draw.html');
 const app = document.getElementById('app');
 
 let config, state;
+
+/**
+ * 逐件保存設定。
+ *
+ * 抵分與迴避都是針對個別案件的事由：批次十件裡通常只有一件是重大案件，
+ * 迴避也只發生在特定案件上。若整批共用同一組設定，不需抵分的案件會被誤抵、
+ * 不需迴避的案件會被誤排除某股——兩者都是不會有人察覺的分案錯誤。
+ */
 const S = {
   caseTypeId: null,
-  caseNos: [],
-  offsetCount: 1,
-  offsetBins: new Set(),
-  excluded: new Set(),
-  excludeReason: '',
+  items: [], // { caseNo, offsetCount, offsetBins:Set, excluded:Set, excludeReason }
   note: '',
 };
+
+function newItem(caseNo) {
+  return { caseNo, offsetCount: 1, offsetBins: new Set([S.caseTypeId]), excluded: new Set(), excludeReason: '' };
+}
 
 const STEP_NAMES = ['選案類', '輸入案號', '抵分', '迴避', '確認', '抽籤', '結果'];
 
@@ -187,7 +206,7 @@ function step1(login = null) {
   app.querySelectorAll('[data-ct]').forEach((b) =>
     b.addEventListener('click', () => {
       S.caseTypeId = b.dataset.ct;
-      S.offsetBins = new Set([S.caseTypeId]);
+      S.items = [];
       step2();
     })
   );
@@ -209,7 +228,7 @@ function step2() {
         本 repo 的內容公開，一旦寫入即無法收回。
       </p>
       <label for="nos" style="margin-top:1rem">案號（一行一件，可一次貼上多件）</label>
-      <textarea id="nos" spellcheck="false" placeholder="115金訴-031&#10;115金訴-032">${S.caseNos.join('\n')}</textarea>
+      <textarea id="nos" spellcheck="false" placeholder="115金訴-031&#10;115金訴-032">${S.items.map((i) => i.caseNo).join('\n')}</textarea>
       <div id="cnt" style="font-weight:700;margin-top:0.4rem" role="status"></div>
       <div class="row" style="margin-top:1rem">
         ${back(1, '重選案類')}
@@ -231,7 +250,10 @@ function step2() {
     if (dup.length) return alert(`輸入內容有重複的案號：${[...new Set(dup)].join('、')}`);
     const bad = ids.filter((v) => /[A-Z][12][0-9]{8}/.test(v));
     if (bad.length) return alert(`下列內容疑似身分證字號，不得填入：${bad.join('、')}`);
-    S.caseNos = ids;
+
+    // 保留既有設定，避免回上一步改案號時把已設好的抵分與迴避清掉
+    const keep = new Map(S.items.map((i) => [i.caseNo, i]));
+    S.items = ids.map((no) => keep.get(no) ?? newItem(no));
     step3();
   });
 }
@@ -241,59 +263,65 @@ function step2() {
 function step3() {
   const max = config.rules.maxOffsetPerCase ?? 10;
   const types = config.caseTypes.filter((c) => c.active);
+  const multi = types.length > 1;
+
   app.innerHTML = chrome(2, `
     <section>
-      <h2 class="sec">抵分設定</h2>
+      <h2 class="sec">抵分設定（逐件）</h2>
       <p class="note">
-        一般案件填 <strong>1</strong>。重大案件經核定抵 3 件就填 <strong>3</strong>，
-        代表本案算 1 件、該股另外少分 2 件。<br>
-        本批 ${S.caseNos.length} 件<strong>共用</strong>同一個抵分設定。
+        一般案件維持 <strong>1</strong> 即可，<strong>只調整重大案件那幾件</strong>。<br>
+        抵 3 件代表本案算 1 件、該股另外少分 2 件。
       </p>
-      <div class="stepper" style="margin:1.2rem 0">
-        <button type="button" id="minus" aria-label="減少">−</button>
-        <span class="val" id="val">${S.offsetCount}</span>
-        <span style="font-size:1.3rem;font-weight:700">件</span>
-        <button type="button" id="plus" aria-label="增加">＋</button>
-      </div>
-      <div id="scope"></div>
+      <div id="rows" style="margin-top:1rem"></div>
       <div class="row" style="margin-top:1.4rem">
         ${back(2, '改案號')}
         <button class="btn" id="next" type="button">下一步 →</button>
       </div>
     </section>`);
 
-  const val = document.getElementById('val');
-  const scope = document.getElementById('scope');
+  const rows = document.getElementById('rows');
 
-  function renderScope() {
-    if (S.offsetCount <= 1) { scope.innerHTML = ''; return; }
-    scope.innerHTML = `
-      <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 0.6rem">抵分要扣在哪些籤筒？</h3>
-      <div class="checkgrid">
-        ${types.map((c) => `
-          <label><input type="checkbox" data-bin="${esc(c.id)}"
-            ${S.offsetBins.has(c.id) ? 'checked' : ''}
-            ${c.id === S.caseTypeId ? 'disabled' : ''}>
-            <span>${esc(c.name)}${c.id === S.caseTypeId ? '（本案類，必扣）' : ''}</span></label>`).join('')}
+  function render() {
+    rows.innerHTML = S.items.map((it, i) => {
+      const scope = it.offsetCount > 1 && multi ? `
+        <div style="grid-column:1/-1;padding-top:.5rem">
+          <div style="font-size:.9rem;font-weight:700;color:var(--text-muted);margin-bottom:.4rem">抵分要扣在哪些籤筒？</div>
+          <div class="checkgrid">
+            ${types.map((c) => `
+              <label><input type="checkbox" data-bin="${esc(c.id)}" data-i="${i}"
+                ${it.offsetBins.has(c.id) ? 'checked' : ''}
+                ${c.id === S.caseTypeId ? 'disabled' : ''}>
+                <span>${esc(c.name)}${c.id === S.caseTypeId ? '（本案類，必扣）' : ''}</span></label>`).join('')}
+          </div>
+        </div>` : '';
+
+      return `<div class="caserow${it.offsetCount > 1 ? ' hot' : ''}">
+        <div class="cn">${esc(it.caseNo)}</div>
+        <div class="stepper">
+          <button type="button" data-op="minus" data-i="${i}" aria-label="${esc(it.caseNo)} 減少抵分">−</button>
+          <span class="val">${it.offsetCount}</span>
+          <span style="font-size:1rem;font-weight:700">件</span>
+          <button type="button" data-op="plus" data-i="${i}" aria-label="${esc(it.caseNo)} 增加抵分">＋</button>
+        </div>
+        ${scope}
       </div>`;
-    scope.querySelectorAll('[data-bin]').forEach((cb) =>
-      cb.addEventListener('change', () => {
-        if (cb.checked) S.offsetBins.add(cb.dataset.bin);
-        else S.offsetBins.delete(cb.dataset.bin);
-      })
-    );
+    }).join('');
+
+    rows.querySelectorAll('[data-op]').forEach((b) => b.addEventListener('click', () => {
+      const it = S.items[Number(b.dataset.i)];
+      const d = b.dataset.op === 'plus' ? 1 : -1;
+      it.offsetCount = Math.min(max, Math.max(1, it.offsetCount + d));
+      if (it.offsetCount <= 1) it.offsetBins = new Set([S.caseTypeId]);
+      render();
+    }));
+    rows.querySelectorAll('[data-bin]').forEach((cb) => cb.addEventListener('change', () => {
+      const it = S.items[Number(cb.dataset.i)];
+      if (cb.checked) it.offsetBins.add(cb.dataset.bin);
+      else it.offsetBins.delete(cb.dataset.bin);
+    }));
   }
 
-  const set = (n) => {
-    S.offsetCount = Math.min(max, Math.max(1, n));
-    val.textContent = S.offsetCount;
-    if (S.offsetCount <= 1) S.offsetBins = new Set([S.caseTypeId]);
-    renderScope();
-  };
-  document.getElementById('minus').addEventListener('click', () => set(S.offsetCount - 1));
-  document.getElementById('plus').addEventListener('click', () => set(S.offsetCount + 1));
-  renderScope();
-
+  render();
   document.getElementById('next').addEventListener('click', step4);
 }
 
@@ -301,47 +329,88 @@ function step3() {
 
 function step4() {
   const units = config.units.filter((u) => u.active).sort((a, b) => a.order - b.order);
+
   app.innerHTML = chrome(3, `
     <section>
-      <h2 class="sec">本次應迴避的股別</h2>
+      <h2 class="sec">迴避設定（逐件）</h2>
       <p class="note">
-        沒有要迴避的話，<strong>什麼都不用勾</strong>，直接按下一步。<br>
-        被勾選的股本次不會抽中，但他的籤仍留在籤筒內，不影響輪分節奏。
+        沒有案件需要迴避的話，<strong>什麼都不用做</strong>，直接按下一步。<br>
+        迴避是針對個別案件的事由，因此逐件設定——被勾選的股在<strong>該件</strong>不會被抽中，
+        但他的籤仍留在籤筒內，不影響輪分節奏。
       </p>
-      <div class="checkgrid" style="margin-top:1.2rem">
-        ${units.map((u) => `
-          <label><input type="checkbox" data-u="${esc(u.id)}" ${S.excluded.has(u.id) ? 'checked' : ''}>
-            <span>${esc(u.name)}</span></label>`).join('')}
-      </div>
-      <div id="reasonbox" style="margin-top:1.2rem"></div>
+      <div id="rows" style="margin-top:1rem"></div>
       <div class="row" style="margin-top:1.4rem">
         ${back(3, '改抵分')}
         <button class="btn" id="next" type="button">下一步 →</button>
       </div>
     </section>`);
 
-  const box = document.getElementById('reasonbox');
-  function renderReason() {
-    if (S.excluded.size === 0) { box.innerHTML = ''; return; }
-    box.innerHTML = `
-      <label for="rsn">迴避事由（必填）</label>
-      <input type="text" id="rsn" value="${esc(S.excludeReason)}" placeholder="例如：承辦法官為前審裁判法官，依法自行迴避">`;
-    document.getElementById('rsn').addEventListener('input', (e) => { S.excludeReason = e.target.value; });
+  const rows = document.getElementById('rows');
+  const nameOf = (id) => units.find((u) => u.id === id)?.name ?? id;
+
+  function render() {
+    rows.innerHTML = S.items.map((it, i) => {
+      const on = it.excluded.size > 0;
+      const detail = on ? `
+        <div style="grid-column:1/-1;padding-top:.5rem">
+          <div class="checkgrid">
+            ${units.map((u) => `
+              <label><input type="checkbox" data-u="${esc(u.id)}" data-i="${i}"
+                ${it.excluded.has(u.id) ? 'checked' : ''}><span>${esc(u.name)}</span></label>`).join('')}
+          </div>
+          <div style="margin-top:.8rem">
+            <label for="rsn-${i}">迴避事由（必填）</label>
+            <input type="text" id="rsn-${i}" data-r="${i}" value="${esc(it.excludeReason)}"
+                   placeholder="例如：承辦法官為前審裁判法官，依法自行迴避">
+          </div>
+        </div>` : '';
+
+      return `<div class="caserow${on ? ' hot' : ''}">
+        <div class="cn">${esc(it.caseNo)}</div>
+        <div>
+          ${on
+            ? `<button type="button" class="btn" data-clear="${i}" style="min-height:56px;font-size:.9rem">取消迴避</button>`
+            : `<button type="button" class="btn" data-set="${i}" style="min-height:56px;font-size:.9rem">設定迴避</button>`}
+        </div>
+        ${on ? `<div style="grid-column:1/-1;font-size:.9rem;font-weight:700;color:var(--danger)">
+                  迴避：${[...it.excluded].map(nameOf).map(esc).join('、') || '（尚未勾選）'}
+                </div>` : ''}
+        ${detail}
+      </div>`;
+    }).join('');
+
+    rows.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => {
+      // 先放一個佔位值使區塊展開，實際勾選由使用者完成
+      const it = S.items[Number(b.dataset.set)];
+      it.excluded = new Set([units[0].id]);
+      render();
+    }));
+    rows.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => {
+      const it = S.items[Number(b.dataset.clear)];
+      it.excluded = new Set();
+      it.excludeReason = '';
+      render();
+    }));
+    rows.querySelectorAll('[data-u]').forEach((cb) => cb.addEventListener('change', () => {
+      const it = S.items[Number(cb.dataset.i)];
+      if (cb.checked) it.excluded.add(cb.dataset.u);
+      else it.excluded.delete(cb.dataset.u);
+      // 不重繪整塊，以免使用者正在輸入事由時焦點被打斷
+      const label = cb.closest('.caserow').querySelector('div[style*="var(--danger)"]');
+      if (label) label.textContent = '迴避：' + ([...it.excluded].map(nameOf).join('、') || '（尚未勾選）');
+    }));
+    rows.querySelectorAll('[data-r]').forEach((inp) => inp.addEventListener('input', () => {
+      S.items[Number(inp.dataset.r)].excludeReason = inp.value;
+    }));
   }
 
-  app.querySelectorAll('[data-u]').forEach((cb) =>
-    cb.addEventListener('change', () => {
-      if (cb.checked) S.excluded.add(cb.dataset.u);
-      else S.excluded.delete(cb.dataset.u);
-      renderReason();
-    })
-  );
-  renderReason();
+  render();
 
   document.getElementById('next').addEventListener('click', () => {
-    if (S.excluded.size > 0 && !S.excludeReason.trim()) return alert('有勾選迴避時必須填寫事由');
-    if (S.excluded.size >= config.units.filter((u) => u.active).length) {
-      return alert('所有股別都被迴避，無法抽籤');
+    for (const it of S.items) {
+      if (it.excluded.size === 0) continue;
+      if (!it.excludeReason.trim()) return alert(`${it.caseNo}：有勾選迴避時必須填寫事由`);
+      if (it.excluded.size >= units.length) return alert(`${it.caseNo}：所有股別都被迴避，無法抽籤`);
     }
     step5();
   });
@@ -352,9 +421,8 @@ function step4() {
 function step5() {
   const ct = caseTypeOf(config, S.caseTypeId);
   const nameOf = (id) => config.units.find((u) => u.id === id)?.name ?? id;
-  const scopeText = S.offsetCount > 1
-    ? [...S.offsetBins].map((b) => caseTypeOf(config, b)?.name ?? b).join('、')
-    : '—';
+  const nBig = S.items.filter((i) => i.offsetCount > 1).length;
+  const nExcl = S.items.filter((i) => i.excluded.size > 0).length;
 
   app.innerHTML = chrome(4, `
     <section>
@@ -362,10 +430,27 @@ function step5() {
       <div class="review">
         <dl>
           <div class="r"><dt>案類</dt><dd>${esc(ct.name)}</dd></div>
-          <div class="r"><dt>案件</dt><dd>${S.caseNos.length} 件<br>${S.caseNos.map(esc).join('<br>')}</dd></div>
-          <div class="r"><dt>抵分</dt><dd>${S.offsetCount} 件${S.offsetCount > 1 ? `<br>扣在：${esc(scopeText)}` : '（一般案件）'}</dd></div>
-          <div class="r"><dt>迴避</dt><dd>${S.excluded.size === 0 ? '無'
-            : [...S.excluded].map(nameOf).map(esc).join('、') + '<br>' + esc(S.excludeReason)}</dd></div>
+          <div class="r"><dt>件數</dt><dd>${S.items.length} 件${
+            nBig ? `　其中 ${nBig} 件有抵分` : ''}${nExcl ? `　${nExcl} 件有迴避` : ''}</dd></div>
+        </dl>
+      </div>
+
+      <div class="review" style="margin-top:1rem">
+        <dl>
+          ${S.items.map((it) => {
+            const scope = it.offsetCount > 1
+              ? [...it.offsetBins].map((b) => caseTypeOf(config, b)?.name ?? b).join('、')
+              : null;
+            const bits = [];
+            bits.push(it.offsetCount > 1
+              ? `<strong style="color:var(--danger)">抵 ${it.offsetCount} 件</strong>（扣在 ${esc(scope)}）`
+              : '抵分 1 件');
+            if (it.excluded.size > 0) {
+              bits.push(`<strong style="color:var(--danger)">迴避 ${[...it.excluded].map(nameOf).map(esc).join('、')}</strong>` +
+                `<br><span style="font-weight:500">事由：${esc(it.excludeReason)}</span>`);
+            }
+            return `<div class="r"><dt>${esc(it.caseNo)}</dt><dd>${bits.join('<br>')}</dd></div>`;
+          }).join('')}
         </dl>
       </div>
 
@@ -414,17 +499,20 @@ function renderProgress(idx, extra = '') {
 
 async function run() {
   const token = gh.getToken();
-  const offsetMap = S.offsetCount > 1
-    ? Object.fromEntries([...S.offsetBins].map((b) => [b, S.offsetCount - 1]))
-    : null;
+
+  const items = S.items.map((it) => ({
+    caseNo: it.caseNo,
+    offsetCount: it.offsetCount,
+    offsetMap: it.offsetCount > 1
+      ? Object.fromEntries([...it.offsetBins].map((b) => [b, it.offsetCount - 1]))
+      : null,
+    excludedUnitIds: [...it.excluded],
+    excludeReason: it.excludeReason,
+  }));
 
   const inputs = {
     case_type: S.caseTypeId,
-    case_nos: S.caseNos.join('\n'),
-    offset_count: String(S.offsetCount),
-    offset_map: offsetMap ? JSON.stringify(offsetMap) : '',
-    excluded: [...S.excluded].join(','),
-    exclude_reason: S.excludeReason,
+    items: JSON.stringify(items),
     note: S.note,
   };
 
@@ -578,7 +666,7 @@ function bindBack() {
   app.querySelectorAll('[data-back]').forEach((b) =>
     b.addEventListener('click', () => {
       const n = Number(b.dataset.back);
-      if (n === 1) { S.caseNos = []; S.offsetCount = 1; S.excluded = new Set(); S.excludeReason = ''; step1(); }
+      if (n === 1) { S.items = []; step1(); }
       else if (n === 2) step2();
       else if (n === 3) step3();
       else if (n === 4) step4();

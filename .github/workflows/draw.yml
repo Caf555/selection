@@ -20,12 +20,22 @@ on:
         required: true
         type: string
       case_nos:
-        description: "案號（每行一件，可一次多件）"
-        required: true
+        description: "案號（每行一件，可一次多件）。下方 items 有值時忽略本欄"
+        required: false
+        default: ""
+        type: string
+      # 抽籤台以此傳送逐件設定。抵分與迴避都是針對個別案件的事由，
+      # 若整批共用會使不需抵分的案件被誤抵、不需迴避的案件被誤排除。
+      items:
+        description: >-
+          逐件設定（JSON 陣列，留空則使用上方 case_nos 與下方的批次預設）。
+          例：[{"caseNo":"115金訴-031"},{"caseNo":"115金訴-032","offsetCount":3}]
+        required: false
+        default: ""
         type: string
       offset_count:
-        description: "抵分件數（一般案件填 1；重大案件抵 3 件就填 3）"
-        required: true
+        description: "抵分件數的批次預設（一般案件 1；items 有值時忽略本欄）"
+        required: false
         default: "1"
         type: string
       offset_map:
@@ -66,6 +76,7 @@ jobs:
       ACTOR: ${{ github.actor }}
       CASE_TYPE: ${{ inputs.case_type }}
       CASE_NOS: ${{ inputs.case_nos }}
+      ITEMS: ${{ inputs.items }}
       OFFSET_COUNT: ${{ inputs.offset_count }}
       OFFSET_MAP: ${{ inputs.offset_map }}
       EXCLUDED: ${{ inputs.excluded }}

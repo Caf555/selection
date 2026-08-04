@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "appVersion": "1.2.0",
+  "_appVersion": "前端版本號。修改 public/ 底下的檔案後必須同步提高此值與各頁面的 APP_VERSION，否則使用者的瀏覽器會繼續執行快取中的舊版程式。engine/test/version.test.mjs 會檢查兩者一致。",
   "updatedAt": "2026-08-04T00:00:00+08:00",
   "courts": [
     {

@@ -18,7 +18,7 @@
 | P3 | 公開看板、歷史查詢、驗證頁 | **已完成** |
 | P2 | drand 公共亂數、兩階段承諾—開籤、GitHub Actions | **程式已完成**，待完成 repo 設定 |
 | P4 | 抽籤台、列印紀錄表 | **已完成並實機驗證** |
-| P5 | QR code、本機同步腳本 | **已完成** |
+| P5 | 本機同步腳本、離線稽核工具 | **已完成** |
 | P5b | LINE 群組推播 | 程式已完成，待你申請帳號並設定 Secret |
 | P4b | 組織管理頁與設定變更流程 | **已完成** |
 | P6 | 平行試辦、教育訓練、正式上線 | 未開始 |
@@ -60,9 +60,9 @@
    填入 `validTo`，不必更換任何共用密碼，也不影響其他人。
 
 4. **GitHub Pages**（公開看板）
-   ⚠ 免費個人帳號的 Pages **只支援公開 repo**。目前 repo 為私有，
-   看板無法對外發布，只能在本機以 `node tools/serve.mjs` 檢視。
-   轉為公開前須先確認 SPEC §15 的 A-04（案號是否適合完整公開）。
+   已啟用，網址 <https://caf555.github.io/selection/>。
+   Pages 必須設定為「Deploy from a branch → main → `/ (root)`」；
+   選 `/docs` 的話網頁讀不到 `/data/` 底下的資料檔，整站會壞掉。
 
 ---
 
@@ -160,8 +160,19 @@ public/        公開網頁（原生 HTML/CSS/JS，無建置流程）
   print.html     抽籤紀錄表（A4 直式，供附卷）
   css/large-type.css  大字體與無障礙樣式
 tools/
-  serve.mjs      本機預覽伺服器
-  seed-demo.mjs  產生示範資料至 demo/
+  serve.mjs        本機預覽伺服器
+  seed-demo.mjs    產生示範資料至 demo/
+  verify-all.mjs   全量稽核（雜湊鏈、抽籤位置、BLS 驗簽、殘留承諾檔）
+  sync-local.mjs   本機歷史同步（驗證後輸出 CSV／JSONL／可列印 HTML）
+  sync-local.ps1   同上，供 Windows 工作排程器使用
+  get-group-id.mjs LINE 群組 ID 接收器（僅 push 模式需要）
+.github/workflows/
+  draw.yml     抽籤（兩階段承諾—開籤）
+  redraw.yml   迴避重抽
+  void.yml     作廢並回復籤筒
+  amend.yml    更正案號／備註、更正抵分
+  config.yml   組織設定變更
+  audit.yml    每日全量稽核，失敗自動開 issue
 ```
 
 ### 驗證頁為什麼可信

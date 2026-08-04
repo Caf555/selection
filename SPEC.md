@@ -391,7 +391,7 @@ pick(n, itemSeq):                       # n = drawable 的支數
                        授權者以個人權杖發動
 
    ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
-   │ QR code 分享 │   │ LINE 群組推播 │   │ 本機同步腳本      │
+   │ 網址公開分享 │   │ LINE 群組推播 │   │ 本機同步腳本      │
    │  公開看板網址 │   │ Messaging API │   │ sync-local.ps1   │
    └──────────────┘   └──────────────┘   └──────────────────┘
 ```
@@ -796,7 +796,7 @@ repository admin／organization owner、maintain 或 write 角色、team、GitHu
    - 每輪籤數 N ≠ 1 者顯示藍色「每輪 N 支」提示
    - 籤筒下方顯示：目前輪次、籤筒總支數、下次補籤門檻
 3. **最近 10 筆紀錄**（大字表格）
-4. **分享區**：QR code、複製網址按鈕、訂閱網址
+4. **分享區**：網址、複製網址按鈕、訂閱網址
 
 #### `history.html` — 歷史查詢
 
@@ -825,7 +825,7 @@ repository admin／organization owner、maintain 或 write 角色、team、GitHu
 
 - 步驟 5 的確認頁不可略過，防止誤觸。
 - 批次抽籤在步驟 7 以大字清單逐件列出結果。
-- 列印版面：A4 直式，含案號、承辦股、抽籤時間、drand 輪次、紀錄編號與驗證網址 QR code，供附卷。
+- 列印版面：A4 直式，含案號、承辦股、抽籤時間、drand 輪次、紀錄編號與驗證網址，供附卷。
 
 #### `verify.html` — 結果驗證
 
@@ -845,10 +845,19 @@ repository admin／organization owner、maintain 或 write 角色、team、GitHu
 
 ## 10. 分享與通知
 
-### 10.1 公開網頁與 QR code
+### 10.1 公開網頁
+
+> **已移除 QR code 功能。** 曾以自行實作的編碼器產生 QR code（因不得對外部服務
+> 發出請求，見 §5.3），該實作通過了 Reed-Solomon 碼字合法性、BCH 格式資訊、
+> 反向讀取一致性等數學驗證，但**實機掃描無法辨識**——代表仍有這些測試涵蓋不到的
+> 錯誤，只有真正的解碼器才驗得出來。
+>
+> 由於本系統的每一項功能都必須能被實際驗證，無法確認正確的功能不應留在系統中，
+> 故整項移除。分享改以網址與「複製網址」按鈕達成。
+> 日後若要恢復，必須先具備可自動化的真實解碼驗證，不能僅靠自我一致的測試。
 
 - 公開看板網址為 `https://{owner}.github.io/court-lottery/`，免登入、免帳號，手機平板皆可讀。
-- 首頁提供 QR code（前端產生，不呼叫外部服務），可列印張貼於公布欄或傳送至群組。
+- 首頁顯示完整網址並提供「複製網址」按鈕，可列印張貼於公布欄或傳送至群組。
 - 提供「複製網址」按鈕。
 - 每筆紀錄有專屬固定網址 `#/record/R-000128`，可直接引用。
 
@@ -1088,7 +1097,7 @@ repository admin／organization owner、maintain 或 write 角色、team、GitHu
 | P2 | drand 整合 + 兩階段承諾—開籤 + Actions workflow + repo 保護設定 | 可實際線上抽籤 | 核心 |
 | P3 | 公開看板 + 歷史查詢 + 驗證頁 | 對外公開可讀 | 核心 |
 | P4 | 抽籤台 + 管理頁 + 列印版面 | 授權者可自行操作 | 核心 |
-| P5 | LINE 推播 + QR code + 本機同步腳本 + 離線驗證工具 | 通知與備份完備 | 加值 |
+| P5 | LINE 推播 + 本機同步腳本 + 離線驗證工具 | 通知與備份完備 | 加值 |
 | P6 | 平行試辦、教育訓練、正式上線 | 使用手冊、操作圖卡（大字版） | 導入 |
 
 **P1 為最關鍵階段**：抽籤演算法一旦上線就難以修改（會影響歷史一致性），必須在 P1 完成全部規則的測試驗收後才進入 P2。
@@ -1130,7 +1139,7 @@ court-lottery/
 ├── tools/
 │   ├── sync-local.ps1            本機歷史同步
 │   ├── verify-all.mjs            離線全量驗證
-│   └── qrcode.mjs                QR code 產生（無外部相依）
+│   └── verify-all.mjs             離線全量稽核
 └── .github/workflows/
     ├── draw.yml   redraw.yml   amend.yml   void.yml
     ├── config.yml  backfill.yml  resume.yml

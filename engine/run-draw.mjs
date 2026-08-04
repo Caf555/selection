@@ -59,6 +59,7 @@ const IN = {
   caseTypeId: (process.env.CASE_TYPE ?? '').trim(),
   caseNos: (process.env.CASE_NOS ?? '')
     .split('\n').map((s) => s.trim()).filter(Boolean),
+  itemsRaw: (process.env.ITEMS ?? '').trim(),
   offsetCount: Number(process.env.OFFSET_COUNT ?? '1'),
   offsetMapRaw: (process.env.OFFSET_MAP ?? '').trim(),
   excluded: (process.env.EXCLUDED ?? '')
@@ -73,6 +74,76 @@ function nowIso() {
   // 以 +08:00 記錄，與公文書時間一致
   const d = new Date(Date.now() + 8 * 3600 * 1000);
   return d.toISOString().replace('Z', '+08:00');
+}
+
+/**
+ * 解析逐件設定。
+ *
+ * 抵分與迴避都是針對個別案件的事由：批次十件裡通常只有一件是重大案件，
+ * 迴避也只發生在特定案件上。若整批共用同一組設定，不需抵分的案件會被誤抵、
+ * 不需迴避的案件會被誤排除某股——兩者都是不會有人察覺的分案錯誤。
+ *
+ * ITEMS 有值時以其為準；否則退回 CASE_NOS 加批次預設，
+ * 讓從 GitHub 介面手動發動的簡單情形仍然好用。
+ */
+function resolveItems() {
+  const batchOffsetMap = (() => {
+    if (!IN.offsetMapRaw) return null;
+    try {
+      return JSON.parse(IN.offsetMapRaw);
+    } catch {
+      die(`抵分範圍不是合法的 JSON：${IN.offsetMapRaw}`);
+    }
+  })();
+
+  if (!IN.itemsRaw) {
+    return IN.caseNos.map((caseNo) => ({
+      caseNo,
+      offsetCount: IN.offsetCount,
+      offsetMap: batchOffsetMap,
+      excludedUnitIds: IN.excluded,
+      excludeReason: IN.excludeReason,
+      note: IN.note,
+    }));
+  }
+
+  let raw;
+  try {
+    raw = JSON.parse(IN.itemsRaw);
+  } catch (e) {
+    die(`逐件設定不是合法的 JSON：${e.message}`);
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    die('逐件設定必須是至少含一件案件的陣列');
+  }
+
+  return raw.map((it, i) => {
+    const where = `第 ${i + 1} 件`;
+    const caseNo = String(it.caseNo ?? '').trim();
+    if (!caseNo) die(`${where}缺少案號`);
+
+    const offsetCount = it.offsetCount === undefined ? 1 : Number(it.offsetCount);
+    if (!Number.isInteger(offsetCount) || offsetCount < 1) {
+      die(`${where}（${caseNo}）的抵分件數必須為 1 以上的整數，收到 ${it.offsetCount}`);
+    }
+
+    const excludedUnitIds = Array.isArray(it.excludedUnitIds)
+      ? it.excludedUnitIds.map((u) => String(u).trim()).filter(Boolean)
+      : [];
+    const excludeReason = String(it.excludeReason ?? '').trim();
+    if (excludedUnitIds.length > 0 && !excludeReason) {
+      die(`${where}（${caseNo}）設定了迴避股，但未填寫迴避事由`);
+    }
+
+    return {
+      caseNo,
+      offsetCount,
+      offsetMap: it.offsetMap ?? null,
+      excludedUnitIds,
+      excludeReason,
+      note: String(it.note ?? IN.note ?? ''),
+    };
+  });
 }
 
 function binsFromState(state) {
@@ -137,16 +208,20 @@ function doAuthorize() {
   }
   say(`- 執行者：\`${IN.actor}\`（${auth.operator.displayName}，${auth.operator.role}）`);
 
+  const items = resolveItems();
+  if (items.length === 0) die('未輸入任何案號');
+
   // 個資樣式檢查（SPEC §8.4）
-  for (const c of IN.caseNos) {
+  for (const it of items) {
     try {
-      checkPrivacy(config, c);
+      checkPrivacy(config, it.caseNo);
+      checkPrivacy(config, it.note);
+      checkPrivacy(config, it.excludeReason);
     } catch (e) {
       die(e.message);
     }
   }
-  checkPrivacy(config, IN.note);
-  say(`- 個資樣式檢查：通過（${IN.caseNos.length} 個案號）`);
+  say(`- 個資樣式檢查：通過（${items.length} 個案號）`);
 
   // 資料完整性
   const v = verifyIntegrity();
@@ -155,12 +230,28 @@ function doAuthorize() {
 
   // 案號重複檢查
   const history = loadHistory();
+  const voided = new Set(history.filter((r) => r.type === 'VOID').map((r) => r.targetRecordId));
   const used = new Set(
-    history.filter((r) => r.caseNo && !r.voided).map((r) => `${r.caseTypeId}|${r.caseNo}`)
+    history
+      .filter((r) => r.caseNo && !voided.has(r.recordId))
+      .map((r) => `${r.caseTypeId}|${r.caseNo}`)
   );
-  const dup = IN.caseNos.filter((c) => used.has(`${IN.caseTypeId}|${c}`));
+  const nos = items.map((it) => it.caseNo);
+  const dup = nos.filter((c) => used.has(`${IN.caseTypeId}|${c}`));
   if (dup.length) die(`下列案號已抽過籤：${dup.join('、')}\n若確為更正，請改用作廢流程。`);
+
+  const selfDup = nos.filter((c, i) => nos.indexOf(c) !== i);
+  if (selfDup.length) die(`本次輸入有重複的案號：${[...new Set(selfDup)].join('、')}`);
   say(`- 案號重複檢查：通過`);
+
+  const withOffset = items.filter((it) => it.offsetCount > 1);
+  const withExclude = items.filter((it) => it.excludedUnitIds.length > 0);
+  if (withOffset.length) {
+    say(`- 重大案件（有抵分）：${withOffset.map((it) => `${it.caseNo} 抵 ${it.offsetCount} 件`).join('、')}`);
+  }
+  if (withExclude.length) {
+    say(`- 有迴避設定：${withExclude.map((it) => it.caseNo).join('、')}`);
+  }
   say('');
 }
 
@@ -173,18 +264,10 @@ async function doCommit() {
   const state = loadState();
   const bins = binsFromState(state);
 
-  if (IN.caseNos.length === 0) die('未輸入任何案號');
+  const items = resolveItems();
+  if (items.length === 0) die('未輸入任何案號');
   if (!config.caseTypes.some((c) => c.id === IN.caseTypeId && c.active)) {
     die(`案類不存在或未啟用：${IN.caseTypeId}`);
-  }
-
-  let offsetMap = null;
-  if (IN.offsetMapRaw) {
-    try {
-      offsetMap = JSON.parse(IN.offsetMapRaw);
-    } catch {
-      die(`抵分範圍不是合法的 JSON：${IN.offsetMapRaw}`);
-    }
   }
 
   say('## 承諾階段');
@@ -203,14 +286,7 @@ async function doCommit() {
   const payload = buildCommitPayload({
     config, bins,
     caseTypeId: IN.caseTypeId,
-    items: IN.caseNos.map((caseNo) => ({
-      caseNo,
-      offsetCount: IN.offsetCount,
-      offsetMap,
-      excludedUnitIds: IN.excluded,
-      excludeReason: IN.excludeReason,
-      note: IN.note,
-    })),
+    items,
     operator: `github:${IN.actor}`,
     targetRound,
     batchId,
@@ -272,8 +348,9 @@ async function doReveal() {
 
   say('### 抽籤結果');
   say('');
-  say('| 案號 | 承辦股 | 庭別 | 抵分 |');
-  say('|---|---|---|---|');
+  const unitName = (id) => config.units.find((u) => u.id === id)?.name ?? id;
+  say('| 案號 | 承辦股 | 庭別 | 抵分 | 迴避 |');
+  say('|---|---|---|---|---|');
 
   for (let i = 0; i < out.results.length; i++) {
     const r = out.results[i];
@@ -296,7 +373,9 @@ async function doReveal() {
     );
     appendHistory(rec);
     prev = rec.recordHash;
-    say(`| ${r.caseNo} | **${r.resultUnitName}** | ${r.resultCourtName} | ${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'} |`);
+    const excl = (r.excludedUnitIds ?? []).map(unitName).join('、');
+    say(`| ${r.caseNo} | **${r.resultUnitName}** | ${r.resultCourtName} | ` +
+        `${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'} | ${excl || '—'} |`);
   }
 
   // 更新狀態
