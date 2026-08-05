@@ -7,6 +7,11 @@
  */
 
 import { courtOf, unitOf } from './data.mjs';
+import { terms } from '../../engine/terms.mjs';
+
+// 角色用詞由設定決定，與抽籤引擎共用同一份定義。
+// 任務改變時只需改設定，畫面文字會一併跟著改。
+export { terms };
 
 /** 庭別的圖示。與顏色、文字並列，構成三重標示 */
 const GLYPH = { blue: '■', green: '●', amber: '▲', purple: '◆' };

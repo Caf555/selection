@@ -35,6 +35,7 @@ import { buildCommitPayload, commitPayloadHash, executeReveal, binsHash } from '
 import { buildDrawRecord, sealRecord, makeBatchId } from './records.mjs';
 import { assertBinsUnchangedSince } from './operations.mjs';
 import { refillLoop } from './lottery.mjs';
+import { terms } from './terms.mjs';
 import { LotteryError } from './errors.mjs';
 
 const PENDING_DIR = join(DATA_DIR, 'pending');
@@ -290,8 +291,9 @@ async function doReveal() {
   say(`| 項目 | 內容 |`);
   say(`|---|---|`);
   say(`| 案號 | ${r.caseNo} |`);
-  say(`| 原支援股（迴避） | ~~${rd.recusedUnitId}~~ |`);
-  say(`| **新支援股** | **${r.resultUnitName}**（${r.resultCourtName}） |`);
+  const T = terms(config);
+  say(`| 原${T.drawee}（迴避） | ~~${rd.recusedUnitId}~~ |`);
+  say(`| **新${T.drawee}** | **${r.resultUnitName}**（${r.resultCourtName}） |`);
   say(`| 迴避事由 | ${rd.recuseReason} |`);
   say(`| drand 輪次 | ${out.drand.round} |`);
   say(`| 重抽紀錄 | \`${rec.recordId}\` |`);

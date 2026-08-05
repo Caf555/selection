@@ -141,6 +141,24 @@ export function validateConfig(config) {
     P(`補籤門檻 ${r.refillWhenRemainingAtMost} 不得大於或等於一輪的總籤數 ${totalTickets}，否則會無限補籤`);
   }
 
+  /* ── 角色用詞 ── */
+  if (config.terminology !== undefined) {
+    if (typeof config.terminology !== 'object' || Array.isArray(config.terminology)) {
+      P('terminology 必須是物件');
+    } else {
+      const ALLOWED = ['requester', 'drawee', 'action', 'systemName'];
+      for (const [k, v] of Object.entries(config.terminology)) {
+        if (!ALLOWED.includes(k)) P(`terminology 含未知欄位：${k}`);
+        else if (typeof v !== 'string' || !v.trim()) P(`terminology.${k} 不得為空`);
+        else if (v.length > 20) P(`terminology.${k} 過長（${v.length} 字）`);
+      }
+      const t = config.terminology;
+      if (t.requester && t.drawee && t.requester === t.drawee) {
+        P('terminology.requester 與 drawee 不得相同，否則畫面上無法分辨兩種角色');
+      }
+    }
+  }
+
   /* ── drand ── */
   const d = config.drand ?? {};
   if (!Array.isArray(d.endpoints) || d.endpoints.length < 2) {

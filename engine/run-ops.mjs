@@ -24,6 +24,7 @@ import {
 } from './state.mjs';
 import { buildAuditRecord, sealRecord } from './records.mjs';
 import { buildAmend, applyOffsetAmend, applyVoid } from './operations.mjs';
+import { terms } from './terms.mjs';
 import { LotteryError } from './errors.mjs';
 
 const cmd = process.argv[2];
@@ -132,7 +133,7 @@ function doVoid() {
   say('');
   say(`- 目標紀錄：\`${target.recordId}\``);
   say(`- 案號：${target.caseNo}`);
-  say(`- 原支援股：**${target.resultUnitName}**（${target.resultCourtName}）`);
+  say(`- 原${terms(config).drawee}：**${target.resultUnitName}**（${target.resultCourtName}）`);
   say('');
 
   const bins = binsFromState(state);
@@ -205,7 +206,7 @@ function doOffsetAmend() {
   say('## 抵分更正');
   say('');
   say(`- 目標紀錄：\`${target.recordId}\`（${target.caseNo}）`);
-  say(`- 支援股：**${target.resultUnitName}**　← 不變`);
+  say(`- ${terms(config).drawee}：**${target.resultUnitName}**　← 不變`);
   say(`- 抵分件數：${payload.offsetCountFrom} → **${payload.offsetCountTo}**`);
   say('');
   for (const c of payload.changes) {

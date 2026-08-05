@@ -32,6 +32,9 @@ on:
           - reactivate-requester
           - add-case-type
           - rename-case-type
+          - move-to-requester
+          - move-to-drawee
+          - set-term
           - set-rule
           - set-notify
           - add-operator

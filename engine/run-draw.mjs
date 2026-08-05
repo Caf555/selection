@@ -28,6 +28,7 @@ import { latestRound, targetRoundFor, fetchRound, waitForRound } from './drand.m
 import { buildCommitPayload, commitPayloadHash, executeReveal } from './commit.mjs';
 import { buildDrawRecord, buildAuditRecord, sealRecord, makeBatchId } from './records.mjs';
 import { buildMessage, sendLine, lineCredentialsFromEnv } from './notify.mjs';
+import { terms } from './terms.mjs';
 import { LotteryError } from './errors.mjs';
 
 const PENDING_DIR = join(DATA_DIR, 'pending');
@@ -149,22 +150,23 @@ function resolveItems() {
   });
 }
 
-/** 承辦股必須是已登錄且在職的（SPEC §3.8） */
+/** 需要被服務的一方（預設稱「承辦股」）必須是已登錄且在職的 */
 function checkRequesters(config, items) {
+  const T = terms(config);
   const list = config.requesters ?? [];
   for (const it of items) {
     if (!it.requesterUnitId) {
       die(
-        `案號 ${it.caseNo} 未指定承辦股。\n` +
-        `  承辦股是案件的承辦單位，需與案號一併輸入。\n` +
+        `案號 ${it.caseNo} 未指定${T.requester}。\n` +
+        `  ${T.requester}是已經確定、需要被${T.action}的一方，需與案號一併輸入。\n` +
         (list.length === 0
-          ? `  目前尚未設定任何承辦股，請先至「組織管理」頁新增。`
+          ? `  目前尚未設定任何${T.requester}，請先至「組織管理」頁新增。`
           : `  可選：${list.filter((r) => r.active).map((r) => `${r.id}（${r.name}）`).join('、')}`)
       );
     }
     const r = list.find((x) => x.id === it.requesterUnitId);
-    if (!r) die(`案號 ${it.caseNo} 的承辦股 ${it.requesterUnitId} 不存在`);
-    if (!r.active) die(`案號 ${it.caseNo} 的承辦股 ${r.name} 已停用`);
+    if (!r) die(`案號 ${it.caseNo} 的${T.requester} ${it.requesterUnitId} 不存在`);
+    if (!r.active) die(`案號 ${it.caseNo} 的${T.requester} ${r.name} 已停用`);
   }
 }
 
@@ -233,7 +235,7 @@ function doAuthorize() {
   const items = resolveItems();
   if (items.length === 0) die('未輸入任何案號');
   checkRequesters(config, items);
-  say(`- 承辦股檢查：通過`);
+  say(`- ${terms(config).requester}檢查：通過`);
 
   // 個資樣式檢查（SPEC §8.4）
   for (const it of items) {
@@ -375,7 +377,8 @@ async function doReveal() {
   say('');
   const unitName = (id) => config.units.find((u) => u.id === id)?.name ?? id;
   const reqName = (id) => (config.requesters ?? []).find((r) => r.id === id)?.name ?? id ?? '—';
-  say('| 案號 | 承辦股 | 支援股 | 庭別 | 抵分 | 迴避 |');
+  const T = terms(config);
+  say(`| 案號 | ${T.requester} | ${T.drawee} | 庭別 | 抵分 | 迴避 |`);
   say('|---|---|---|---|---|---|');
 
   for (let i = 0; i < out.results.length; i++) {

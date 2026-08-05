@@ -53,16 +53,16 @@
 
 <script type="module">
 import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
-import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
+import { courtBadge, nav, esc, fail, versionBanner, terms } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 document.getElementById('nav').innerHTML = nav('admin.html');
 const app = document.getElementById('app');
 const dlg = document.getElementById('dlg');
 
-let config, state, operators = { operators: [] };
+let config, state, operators = { operators: [] }, T;
 
 /* ── 權杖 ─────────────────────────────────────────────────── */
 
@@ -163,7 +163,7 @@ function render() {
     </div>` : ''}
 
     <div class="card">
-      <h2>股別（${units.filter((u) => u.active).length} 個在職）</h2>
+      <h2>${esc(T.drawee)}（${units.filter((u) => u.active).length} 個在職，參與抽籤）</h2>
       <div class="body">
         ${units.map((u) => `
           <div class="item${u.active ? '' : ' off'}">
@@ -183,7 +183,7 @@ function render() {
           </div>`).join('')}
 
         <div class="addform">
-          <div class="full"><strong style="font-size:1.05rem">新增股別</strong></div>
+          <div class="full"><strong style="font-size:1.05rem">新增${esc(T.drawee)}</strong></div>
           <div><label for="nu-id">代號</label><input type="text" id="nu-id" placeholder="un-09"></div>
           <div><label for="nu-name">名稱</label><input type="text" id="nu-name" placeholder="○股"></div>
           <div><label for="nu-court">所屬庭</label>
@@ -195,7 +195,7 @@ function render() {
               新股手上沒案時可設每輪多支籤以追分（例如 3）。<strong>新增後會立即投入現有籤筒</strong>，
               追分完成後須手動改回 1。
             </p>
-            <button class="btn" id="add-unit">新增股別</button>
+            <button class="btn" id="add-unit">新增${esc(T.drawee)}</button>
           </div>
         </div>
       </div>
@@ -231,15 +231,15 @@ function render() {
     </div>
 
     <div class="card">
-      <h2>承辦股（${(config.requesters ?? []).filter((r) => r.active).length} 個在職）</h2>
+      <h2>${esc(T.requester)}（${(config.requesters ?? []).filter((r) => r.active).length} 個在職，不參與抽籤）</h2>
       <div class="body">
         <p class="note">
-          承辦股是<strong>案件的承辦單位</strong>，需要支援；抽籤抽的是<strong>支援股</strong>。
-          兩者是不相交的名單——承辦股不參與支援抽籤，新增或停用都不會影響籤筒。<br>
-          抽籤時從這裡選取，因此必須先登錄。
+          ${esc(T.requester)}是<strong>已經確定、需要被${esc(T.action)}</strong>的一方；抽籤抽的是<strong>${esc(T.drawee)}</strong>。
+          兩者是不相交的名單——${esc(T.requester)}不參與抽籤，新增或停用都不會影響籤筒。<br>
+          數量沒有上限，抽籤時從這裡選取，因此必須先登錄。
         </p>
         ${(config.requesters ?? []).length === 0
-          ? '<p class="empty" style="margin-top:.8rem">尚未設定任何承辦股，抽籤前必須先新增</p>'
+          ? '<p class="empty" style="margin-top:.8rem">尚未設定任何${esc(T.requester)}，抽籤前必須先新增</p>'
           : (config.requesters ?? []).slice().sort((a, b) => a.order - b.order).map((r) => `
           <div class="item${r.active ? '' : ' off'}">
             <div class="who">${esc(r.name)}
@@ -255,10 +255,10 @@ function render() {
           </div>`).join('')}
 
         <div class="addform">
-          <div class="full"><strong style="font-size:1.05rem">新增承辦股</strong></div>
+          <div class="full"><strong style="font-size:1.05rem">新增${esc(T.requester)}</strong></div>
           <div><label for="nr-id">代號</label><input type="text" id="nr-id" placeholder="rq-01"></div>
           <div><label for="nr-name">名稱</label><input type="text" id="nr-name" placeholder="○股"></div>
-          <div class="full"><button class="btn" id="add-req">新增承辦股</button></div>
+          <div class="full"><button class="btn" id="add-req">新增${esc(T.requester)}</button></div>
         </div>
       </div>
     </div>
@@ -358,6 +358,37 @@ function render() {
     </div>
 
     <div class="card">
+      <h2>角色用詞</h2>
+      <div class="body">
+        <p class="note">
+          抽籤機制（籤筒、輪分、補籤、抵分、迴避）與任務內容無關。<br>
+          本次任務結束後若要改做其他輪分任務（例如值班股抽籤），
+          <strong>只需改這裡的用詞與兩份名單，不必更動已驗證過的核心演算法</strong>。<br>
+          變更後全站畫面、列印紀錄表與 LINE 通知的用語都會一併跟著改。
+        </p>
+        ${[['requester', '需要被抽中者服務的一方（不參與抽籤）'],
+           ['drawee', '抽籤抽出的一方（籤筒輪分的對象）'],
+           ['action', '動作名稱，用於「○○統計」等處'],
+           ['systemName', '系統名稱，顯示於頁面標題']].map(([k, desc]) => `
+          <div class="item">
+            <div class="who">${esc(T[k])}
+              <span style="font-size:.85rem;color:var(--text-muted);font-weight:500">${esc(desc)}</span>
+            </div>
+            <div class="acts">
+              <button data-a="set-term" data-id="${esc(k)}" data-n="${esc(T[k])}">修改</button>
+            </div>
+          </div>`).join('')}
+        <p class="note" style="margin-top:.8rem">
+          <strong>轉換角色</strong>：若某一股要由「${esc(T.drawee)}」改為「${esc(T.requester)}」
+          （或反之），請用 Actions 的「組織設定變更」流程，動作選
+          <code>move-to-requester</code> 或 <code>move-to-drawee</code>。<br>
+          轉換會以新的代號建立，舊代號保留為停用——歷史紀錄中的舊代號已代表舊角色，
+          沿用會使同一個代號在不同時期指涉不同身分，日後查核將無從分辨。
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>規則參數</h2>
       <div class="body">
         <p class="note">
@@ -405,11 +436,11 @@ function render() {
       if (!confirm(`確定讓「${n}」復職？\n\n自下次補籤起參與抽籤，本輪不投入籤。`)) return;
       execute(a, { id }, `${n} 復職`);
     } else if (a === 'deactivate-requester') {
-      if (!confirm(`確定停用承辦股「${n}」？\n\n之後抽籤將無法選取，但不影響籤筒。`)) return;
-      execute(a, { id }, `停用承辦股 ${n}`);
+      if (!confirm(`確定停用${T.requester}「${n}」？\n\n之後抽籤將無法選取，但不影響籤筒。`)) return;
+      execute(a, { id }, `停用${T.requester} ${n}`);
     } else if (a === 'reactivate-requester') {
-      if (!confirm(`確定重新啟用承辦股「${n}」？`)) return;
-      execute(a, { id }, `啟用承辦股 ${n}`);
+      if (!confirm(`確定重新啟用${T.requester}「${n}」？`)) return;
+      execute(a, { id }, `啟用${T.requester} ${n}`);
     } else if (a === 'deactivate-court') {
       if (!confirm(`確定停用「${n}」？\n\n該庭底下若仍有在職股，系統會拒絕。`)) return;
       execute(a, { id }, `停用庭別 ${n}`);
@@ -430,6 +461,16 @@ function render() {
             : 'broadcast 模式不需群組 ID，但收訊者須將官方帳號加為好友。'))) return;
         execute(a, { key: id, value: next }, `推播模式：${cur} → ${next}`);
       }
+    } else if (a === 'set-term') {
+      const v = prompt(
+        `修改用詞：${id}\n\n目前為「${n}」\n\n` +
+        `變更後全站畫面、列印紀錄表與 LINE 通知都會跟著改。\n請輸入新用詞（20 字以內）：`,
+        n
+      );
+      if (v === null || v.trim() === n) return;
+      if (!v.trim()) return alert('用詞不得為空');
+      if (v.trim().length > 20) return alert('用詞請控制在 20 字以內');
+      execute(a, { key: id, value: v.trim() }, `用詞 ${id}：${n} → ${v.trim()}`);
     } else if (a === 'set-rule') {
       const cur = config.rules[id];
       const v = prompt(`${n}\n\n目前值：${cur}\n請輸入新值：`, String(cur));
@@ -455,7 +496,7 @@ function render() {
   document.getElementById('add-req').addEventListener('click', () => {
     const id = val('nr-id'), name = val('nr-name');
     if (!id || !name) return alert('代號與名稱為必填');
-    execute('add-requester', { id, name }, `新增承辦股 ${name}`);
+    execute('add-requester', { id, name }, `新增${T.requester} ${name}`);
   });
   document.getElementById('add-ct').addEventListener('click', () => {
     const id = val('nt-id'), name = val('nt-name');
@@ -476,6 +517,7 @@ try {
   const d = await loadAll();
   config = d.config;
   state = d.state;
+  T = terms(config);
 
   try {
     const res = await fetch(d.base + 'operators.json', { cache: 'no-store' });

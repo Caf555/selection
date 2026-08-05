@@ -105,15 +105,15 @@
 
 <script type="module">
 import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
-import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
+import { courtBadge, nav, esc, fail, versionBanner, terms } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 document.getElementById('nav').innerHTML = nav('draw.html');
 const app = document.getElementById('app');
 
-let config, state;
+let config, state, T;
 
 /**
  * 逐件保存設定。
@@ -139,10 +139,10 @@ function newItem(caseNo, requesterUnitId = '') {
 const activeRequesters = () => (config.requesters ?? []).filter((r) => r.active).sort((a, b) => a.order - b.order);
 const requesterName = (id) => (config.requesters ?? []).find((r) => r.id === id)?.name ?? id;
 
-const STEP_NAMES = ['選案類', '案號與承辦股', '抵分', '迴避', '確認', '抽籤', '結果'];
+const STEP_NAMES = () => ['選案類', '案號與' + T.requester, '抵分', '迴避', '確認', '抽籤', '結果'];
 
 function chrome(stepIdx, inner) {
-  const steps = STEP_NAMES.map((n, i) =>
+  const steps = STEP_NAMES().map((n, i) =>
     `<span class="${i === stepIdx ? 'now' : i < stepIdx ? 'done' : ''}">${i + 1}. ${n}</span>`
   ).join('');
   return `<div class="steps" aria-label="進度">${steps}</div>${inner}`;
@@ -233,10 +233,10 @@ function step2() {
     app.innerHTML = chrome(1, `
       <section>
         <div class="note warn" role="alert">
-          <strong>尚未設定任何承辦股</strong><br><br>
-          承辦股是案件的承辦單位，需要支援；抽籤抽的是<strong>支援股</strong>。
-          兩者是不同的名單，承辦股必須先登錄才能抽籤。<br><br>
-          請先至「組織管理」頁的「承辦股」區塊新增。
+          <strong>尚未設定任何${esc(T.requester)}</strong><br><br>
+          ${esc(T.requester)}是已經確定、需要被${esc(T.action)}的一方；抽籤抽的是<strong>${esc(T.drawee)}</strong>。
+          兩者是不同的名單，${esc(T.requester)}必須先登錄才能抽籤。<br><br>
+          請先至「組織管理」頁的「${esc(T.requester)}」區塊新增。
         </div>
         <div class="row" style="margin-top:1rem">
           <a class="btn" href="admin.html${location.search}">前往組織管理</a>
@@ -248,20 +248,20 @@ function step2() {
 
   app.innerHTML = chrome(1, `
     <section>
-      <h2 class="sec">${esc(ct.name)}　案號與承辦股</h2>
+      <h2 class="sec">${esc(ct.name)}　案號與${esc(T.requester)}</h2>
       <p class="note warn">
         <strong>嚴禁填入當事人姓名、身分證字號等個人資料。</strong>
         本 repo 的內容公開，一旦寫入即無法收回。
       </p>
 
       <div style="margin-top:1.2rem">
-        <label for="req">承辦股（本批預設）</label>
+        <label for="req">${esc(T.requester)}（本批預設）</label>
         <select id="req">
           ${reqs.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')}
         </select>
         <p class="note" style="margin-top:.6rem">
-          抽籤要抽的是<strong>支援股</strong>，承辦股是已經確定的、需要支援的那一股。<br>
-          若本批的案件承辦股不同，下一步可逐件調整。
+          抽籤要抽的是<strong>${esc(T.drawee)}</strong>，${esc(T.requester)}是已經確定、需要被${esc(T.action)}的那一股。<br>
+          若本批的案件${esc(T.requester)}不同，下一步可逐件調整。
         </p>
       </div>
 
@@ -309,11 +309,11 @@ function step3() {
 
   app.innerHTML = chrome(2, `
     <section>
-      <h2 class="sec">抵分與承辦股（逐件）</h2>
+      <h2 class="sec">抵分與${esc(T.requester)}（逐件）</h2>
       <p class="note">
         一般案件抵分維持 <strong>1</strong> 即可，<strong>只調整重大案件那幾件</strong>。<br>
-        抵 3 件代表本案算 1 件、抽中的<strong>支援股</strong>另外少被抽中 2 次。<br>
-        承辦股若與上一步選的不同，可在此逐件改。
+        抵 3 件代表本案算 1 件、抽中的<strong>${esc(T.drawee)}</strong>另外少被抽中 2 次。<br>
+        ${esc(T.requester)}若與上一步選的不同，可在此逐件改。
       </p>
       <div id="rows" style="margin-top:1rem"></div>
       <div class="row" style="margin-top:1.4rem">
@@ -347,7 +347,7 @@ function step3() {
           <button type="button" data-op="plus" data-i="${i}" aria-label="${esc(it.caseNo)} 增加抵分">＋</button>
         </div>
         <div style="grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);gap:.6rem;align-items:center">
-          <label for="rq-${i}" style="margin:0;font-size:.95rem">承辦股</label>
+          <label for="rq-${i}" style="margin:0;font-size:.95rem">${esc(T.requester)}</label>
           <select id="rq-${i}" data-rq="${i}" style="min-height:56px">
             ${reqs.map((r) => `<option value="${esc(r.id)}"${r.id === it.requesterUnitId ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}
           </select>
@@ -376,7 +376,7 @@ function step3() {
   render();
   document.getElementById('next').addEventListener('click', () => {
     const missing = S.items.filter((it) => !it.requesterUnitId);
-    if (missing.length) return alert(`下列案件未指定承辦股：${missing.map((i) => i.caseNo).join('、')}`);
+    if (missing.length) return alert(`下列案件未指定${T.requester}：${missing.map((i) => i.caseNo).join('、')}`);
     step4();
   });
 }
@@ -498,7 +498,7 @@ function step5() {
               ? [...it.offsetBins].map((b) => caseTypeOf(config, b)?.name ?? b).join('、')
               : null;
             const bits = [];
-            bits.push(`承辦股：<strong>${esc(requesterName(it.requesterUnitId))}</strong>`);
+            bits.push(`${esc(T.requester)}：<strong>${esc(requesterName(it.requesterUnitId))}</strong>`);
             bits.push(it.offsetCount > 1
               ? `<strong style="color:var(--danger)">抵 ${it.offsetCount} 件</strong>（扣在 ${esc(scope)}）`
               : '抵分 1 件');
@@ -664,9 +664,9 @@ function renderResult(records, url) {
   const cards = records.map((r) => `
     <div class="resultcard">
       <div style="font-size:0.95rem;color:var(--text-muted);font-weight:700">
-        ${esc(r.caseNo)}${r.requesterUnitName ? `　承辦股：${esc(r.requesterUnitName)}` : ''}
+        ${esc(r.caseNo)}${r.requesterUnitName ? `　${esc(T.requester)}：${esc(r.requesterUnitName)}` : ''}
       </div>
-      <div style="font-size:0.95rem;font-weight:700;margin-top:.4rem">支援股</div>
+      <div style="font-size:0.95rem;font-weight:700;margin-top:.4rem">${esc(T.drawee)}</div>
       <div class="who">${esc(r.resultUnitName)}</div>
       <div class="row" style="font-size:1.1rem;font-weight:700">
         ${courtBadge(config, r.resultCourtId)}
@@ -743,6 +743,8 @@ try {
   const d = await loadAll();
   config = d.config;
   state = d.state;
+  T = terms(config);
+  document.title = T.systemName + ' — 抽籤台';
 
   // 抽籤會改變籤筒狀態，舊版程式可能對結果做出錯誤判斷而誘使操作者重抽，
   // 因此版本不符時直接阻擋，不只是警示。

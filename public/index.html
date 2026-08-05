@@ -28,9 +28,9 @@
 
 <script type="module">
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime } from './js/data.mjs';
-import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner } from './js/ui.mjs';
+import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner, terms } from './js/ui.mjs';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 document.getElementById('nav').innerHTML = nav('index.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -40,6 +40,9 @@ const app = document.getElementById('app');
 try {
   const { config, state, history } = await loadAll();
   document.getElementById('banner').innerHTML += versionBanner(config, APP_VERSION);
+  const T = terms(config);
+  document.title = T.systemName + ' — 公開看板';
+  document.querySelector('header.site h1').textContent = T.systemName + '　公開看板';
 
   document.getElementById('updated').textContent =
     `狀態更新於 ${fmtTime(state.updatedAt)}　累計序號 ${state.seq}　歷史紀錄 ${history.length} 筆`;
@@ -60,9 +63,9 @@ try {
       <div class="label">最新抽籤結果　${esc(caseTypeOf(config, latest.caseTypeId)?.name ?? '')}</div>
       <div class="caseno">${esc(latest.caseNo)}</div>
       ${latest.requesterUnitName
-        ? `<div style="font-size:1.1rem;font-weight:700;color:var(--text-muted)">承辦股　${esc(latest.requesterUnitName)}</div>` : ''}
+        ? `<div style="font-size:1.1rem;font-weight:700;color:var(--text-muted)">${esc(T.requester)}　${esc(latest.requesterUnitName)}</div>` : ''}
       <div class="arrow" aria-hidden="true">↓</div>
-      <div class="label" style="margin-bottom:0">抽出的支援股</div>
+      <div class="label" style="margin-bottom:0">抽出的${esc(T.drawee)}</div>
       <div class="result">${esc(latest.resultUnitName)}</div>
       <div class="row" style="font-size:1.15rem;font-weight:700">
         ${courtBadge(config, latest.resultCourtId)}
@@ -87,7 +90,7 @@ try {
         <caption class="sr-only">最近十筆抽籤紀錄</caption>
         <thead><tr>
           <th scope="col">時間</th><th scope="col">案類</th><th scope="col">案號</th>
-          <th scope="col">承辦股</th><th scope="col">支援股</th><th scope="col">庭別</th>
+          <th scope="col">${esc(T.requester)}</th><th scope="col">${esc(T.drawee)}</th><th scope="col">庭別</th>
           <th scope="col">抵分</th><th scope="col">狀態</th>
         </tr></thead>
         <tbody>${recent.map((r) => `

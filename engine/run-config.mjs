@@ -24,6 +24,7 @@ import {
 } from './state.mjs';
 import { addUnit, deactivateUnit, setTicketsPerCycle, createBin } from './lottery.mjs';
 import { validateConfig } from './validate-config.mjs';
+import { terms, EDITABLE_TERMS } from './terms.mjs';
 import { buildAuditRecord, sealRecord } from './records.mjs';
 import { LotteryError, ERR } from './errors.mjs';
 
@@ -240,6 +241,80 @@ const ACTIONS = {
     const from = c.name;
     c.name = p.name;
     return { summary: `案類更名：${from} → ${p.name}`, binChanges: [] };
+  },
+
+  // ── 角色用詞 ──
+  // 抽籤機制與任務內容無關。本次任務結束後若要改做其他輪分任務，
+  // 只需改用詞與兩份名單，不必更動已驗證過的核心演算法。
+  'set-term'(config, bins, p) {
+    req(p, 'key', 'value');
+    if (!EDITABLE_TERMS.includes(p.key)) {
+      die(`不允許的用詞欄位：${p.key}。可修改的項目：${EDITABLE_TERMS.join('、')}`);
+    }
+    const value = String(p.value).trim();
+    if (!value) die(`用詞不得為空`);
+    if (value.length > 20) die(`用詞過長（${value.length} 字），請控制在 20 字以內`);
+
+    config.terminology ??= {};
+    const before = terms(config)[p.key];
+    config.terminology[p.key] = value;
+    return { summary: `用詞 ${p.key}：${before} → ${value}`, binChanges: [] };
+  },
+
+  // ── 角色轉換 ──
+  // 以單一動作完成「自一份名單移出、加入另一份」，使稽核紀錄能直接看出
+  // 這是一次角色調整，而不是兩筆看似無關的變更。
+  //
+  // 刻意使用新的 ID：歷史紀錄中的舊 ID 已代表舊角色，沿用會使同一個 ID
+  // 在不同時期指涉不同身分，日後查核將無從分辨。
+
+  'move-to-requester'(config, bins, p) {
+    req(p, 'id', 'newId');
+    const u = config.units.find((x) => x.id === p.id);
+    if (!u) die(`${terms(config).drawee}不存在：${p.id}`);
+    if (!u.active) die(`${u.name} 已停用，無需轉換`);
+    config.requesters ??= [];
+    if (config.requesters.some((r) => r.id === p.newId)) die(`承辦股 ID 已存在：${p.newId}`);
+    if (config.units.some((x) => x.id === p.newId)) die(`${p.newId} 已是抽籤名單的 ID`);
+
+    const adj = deactivateUnit(config, bins, p.id);
+    const order = p.order ?? Math.max(0, ...config.requesters.map((r) => r.order)) + 1;
+    config.requesters.push({
+      id: p.newId, name: p.name ?? u.name, order, active: true,
+      note: `由 ${u.name}（${p.id}）轉換而來`,
+    });
+    config.requesters.sort((a, b) => a.order - b.order);
+
+    const T = terms(config);
+    return {
+      summary: `${u.name} 由「${T.drawee}」轉為「${T.requester}」（${p.id} → ${p.newId}），其籤已自籤筒撤出`,
+      binChanges: adj,
+    };
+  },
+
+  'move-to-drawee'(config, bins, p) {
+    req(p, 'id', 'newId', 'courtId');
+    const r = (config.requesters ?? []).find((x) => x.id === p.id);
+    if (!r) die(`${terms(config).requester}不存在：${p.id}`);
+    if (!r.active) die(`${r.name} 已停用，無需轉換`);
+    if (config.units.some((x) => x.id === p.newId)) die(`抽籤名單 ID 已存在：${p.newId}`);
+
+    r.active = false;
+    r.note = `已轉為${terms(config).drawee}（${p.newId}）`;
+
+    const n = p.ticketsPerCycle ?? 1;
+    const order = p.order ?? Math.max(0, ...config.units.map((u) => u.order)) + 1;
+    const adj = addUnit(config, bins, {
+      id: p.newId, name: p.name ?? r.name, courtId: p.courtId, order,
+      ticketsPerCycle: n, note: `由 ${r.name}（${p.id}）轉換而來`,
+    });
+
+    const T = terms(config);
+    return {
+      summary: `${r.name} 由「${T.requester}」轉為「${T.drawee}」（${p.id} → ${p.newId}），` +
+        `已立即投入 ${n} 支籤`,
+      binChanges: adj,
+    };
   },
 
   'set-notify'(config, bins, p) {

@@ -17,6 +17,8 @@
  * （LINE 官方帳號）。設定步驟見 README。
  */
 
+import { terms } from './terms.mjs';
+
 const LINE_PUSH = 'https://api.line.me/v2/bot/message/push';
 const LINE_BROADCAST = 'https://api.line.me/v2/bot/message/broadcast';
 
@@ -28,15 +30,16 @@ export function buildMessage({ config, records, dashboardUrl, includeCaseNo = tr
   if (records.length === 0) return null;
 
   const ct = (id) => config.caseTypes.find((c) => c.id === id)?.name ?? id;
-  const head = records.length === 1 ? '【支援股抽籤結果】' : `【支援股抽籤結果】共 ${records.length} 件`;
+  const T = terms(config);
+  const head = records.length === 1 ? `【${T.drawee}抽籤結果】` : `【${T.drawee}抽籤結果】共 ${records.length} 件`;
 
   const lines = [head, ''];
 
   if (includeCaseNo) {
     for (const r of records) {
       lines.push(`${ct(r.caseTypeId)}　${r.caseNo}` +
-        (r.requesterUnitName ? `（承辦：${r.requesterUnitName}）` : ''));
-      lines.push(`　支援　${r.resultCourtName} ${r.resultUnitName}` +
+        (r.requesterUnitName ? `（${T.requester}：${r.requesterUnitName}）` : ''));
+      lines.push(`　${T.action}　${r.resultCourtName} ${r.resultUnitName}` +
         (r.offsetCount > 1 ? `（抵 ${r.offsetCount} 件）` : ''));
     }
   } else {
