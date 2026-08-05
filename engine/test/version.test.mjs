@@ -39,6 +39,10 @@ describe('前端版本一致性', () => {
     assert.ok(pages.length >= 5, `只找到 ${pages.length} 個頁面，路徑可能有誤`);
   });
 
+  // 開發時的常見失誤：以 git checkout -- data/ 還原測試資料後，
+  // config.appVersion 會被一併還原，而頁面的 APP_VERSION 仍是新值。
+  // 這個測試就是在攔截那個狀態——一旦兩者不一致，全體使用者都會被
+  // 誤判為舊版而無法操作。還原測試資料請改用快照，不要動到 config。
   test('每個頁面都宣告 APP_VERSION，且與 config.appVersion 一致', () => {
     const bad = [];
     for (const f of pages) {
