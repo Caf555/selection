@@ -39,6 +39,7 @@ export function sealRecord(record, prevRecordHash) {
 export function buildDrawRecord({
   seq, at, operator, workflowRunUrl, batchId, caseNo, note = '',
   caseTypeName, result, drand = null, commitPayloadHash = null,
+  requesterUnitId = null, requesterUnitName = null,
 }) {
   return {
     recordId: makeRecordId(seq),
@@ -54,6 +55,10 @@ export function buildDrawRecord({
     caseTypeName,
     caseNo,
     note,
+
+    // 承辦股：案件的承辦單位，需要支援。與抽出的支援股是兩組不相交的名單。
+    requesterUnitId: requesterUnitId ?? result.requesterUnitId ?? null,
+    requesterUnitName: requesterUnitName ?? result.requesterUnitName ?? null,
 
     offsetCount: result.offsetCount,
     offsetMap: result.offsetMap,

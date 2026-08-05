@@ -26,6 +26,10 @@ on:
           - add-court
           - rename-court
           - deactivate-court
+          - add-requester
+          - rename-requester
+          - deactivate-requester
+          - reactivate-requester
           - add-case-type
           - rename-case-type
           - set-rule

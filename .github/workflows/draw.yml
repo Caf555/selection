@@ -28,8 +28,9 @@ on:
       # 若整批共用會使不需抵分的案件被誤抵、不需迴避的案件被誤排除。
       items:
         description: >-
-          逐件設定（JSON 陣列，留空則使用上方 case_nos 與下方的批次預設）。
-          例：[{"caseNo":"115金訴-031"},{"caseNo":"115金訴-032","offsetCount":3}]
+          逐件設定（JSON 陣列）。requesterUnitId 為承辦股，必填。
+          例：[{"caseNo":"115金訴-031","requesterUnitId":"rq-01"},
+          {"caseNo":"115金訴-032","requesterUnitId":"rq-02","offsetCount":3}]
         required: false
         default: ""
         type: string

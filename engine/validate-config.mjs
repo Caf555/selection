@@ -83,6 +83,37 @@ export function validateConfig(config) {
     if (court && court.active === false) P(`股別 ${u.name} 仍在職，但其所屬的庭 ${court.name} 已停用`);
   }
 
+  /* ── 承辦股 ──
+     與 units（支援股）是兩組不相交的名單：承辦股是案件的承辦單位、需要支援，
+     不參與支援抽籤。清單可以是空的（尚未設定），但抽籤時必須指定，
+     由 run-draw.mjs 於該時點檢查。 */
+  if (config.requesters !== undefined) {
+    if (!Array.isArray(config.requesters)) {
+      P('requesters 必須是陣列');
+    } else {
+      const rIds = new Set();
+      const rOrders = new Set();
+      const rNames = new Set();
+      const unitIdSet = new Set(config.units.map((u) => u.id));
+      for (const r of config.requesters) {
+        if (!r.id) { P(`承辦股缺少 id：${JSON.stringify(r)}`); continue; }
+        if (rIds.has(r.id)) P(`承辦股 ID 重複：${r.id}`);
+        rIds.add(r.id);
+        if (!r.name) P(`承辦股 ${r.id} 缺少名稱`);
+        if (!Number.isInteger(r.order)) P(`承辦股 ${r.id} 的 order 必須為整數`);
+        else if (rOrders.has(r.order)) P(`承辦股 order 重複：${r.order}`);
+        rOrders.add(r.order);
+        if (r.active) {
+          if (rNames.has(r.name)) P(`在職承辦股名稱重複：${r.name}`);
+          rNames.add(r.name);
+        }
+        if (unitIdSet.has(r.id)) {
+          P(`承辦股 ${r.id} 與支援股使用了相同的 ID，兩者必須是不相交的名單`);
+        }
+      }
+    }
+  }
+
   /* ── 案類 ── */
   const ctIds = new Set();
   for (const c of config.caseTypes) {

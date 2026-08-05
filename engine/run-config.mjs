@@ -180,6 +180,50 @@ const ACTIONS = {
     };
   },
 
+  // ── 承辦股 ──
+  // 與支援股是兩組不相交的名單：承辦股是案件的承辦單位、需要支援，
+  // 不參與支援抽籤，因此新增或停用都不會影響籤筒。
+
+  'add-requester'(config, bins, p) {
+    req(p, 'id', 'name');
+    config.requesters ??= [];
+    if (config.requesters.some((r) => r.id === p.id)) die(`承辦股 ID 已存在：${p.id}`);
+    if (config.units.some((u) => u.id === p.id)) {
+      die(`${p.id} 已是支援股的 ID。承辦股與支援股必須是不相交的名單。`);
+    }
+    const order = p.order ?? Math.max(0, ...config.requesters.map((r) => r.order)) + 1;
+    config.requesters.push({ id: p.id, name: p.name, order, active: true, note: p.note ?? '' });
+    config.requesters.sort((a, b) => a.order - b.order);
+    return { summary: `新增承辦股 ${p.name}（${p.id}）`, binChanges: [] };
+  },
+
+  'rename-requester'(config, bins, p) {
+    req(p, 'id', 'name');
+    const r = (config.requesters ?? []).find((x) => x.id === p.id);
+    if (!r) die(`承辦股不存在：${p.id}`);
+    const from = r.name;
+    r.name = p.name;
+    return { summary: `承辦股更名：${from} → ${p.name}`, binChanges: [] };
+  },
+
+  'deactivate-requester'(config, bins, p) {
+    req(p, 'id');
+    const r = (config.requesters ?? []).find((x) => x.id === p.id);
+    if (!r) die(`承辦股不存在：${p.id}`);
+    if (!r.active) die(`${r.name} 已經是停用狀態`);
+    r.active = false;
+    return { summary: `停用承辦股 ${r.name}（不影響籤筒）`, binChanges: [] };
+  },
+
+  'reactivate-requester'(config, bins, p) {
+    req(p, 'id');
+    const r = (config.requesters ?? []).find((x) => x.id === p.id);
+    if (!r) die(`承辦股不存在：${p.id}`);
+    if (r.active) die(`${r.name} 已經是在職狀態`);
+    r.active = true;
+    return { summary: `承辦股 ${r.name} 恢復啟用`, binChanges: [] };
+  },
+
   'add-case-type'(config, bins, p) {
     req(p, 'id', 'name');
     if (config.caseTypes.some((c) => c.id === p.id)) die(`案類 ID 已存在：${p.id}`);

@@ -5,11 +5,11 @@
  *
  *   void          作廢整筆抽籤並完整回復籤筒（ADMIN）
  *   amend         更正不影響籤筒的欄位（案號、備註）
- *   offset-amend  更正抵分數，承辦股不變，只調整籤筒與欠籤
+ *   offset-amend  更正抵分數，支援股不變，只調整籤筒與欠籤
  *
  * 這三者界線分明，不可混用（SPEC §7.1）：
  *   案號打錯          → amend
- *   抵分數填錯        → offset-amend（承辦股是對的，不該連分案結果一起推翻）
+ *   抵分數填錯        → offset-amend（支援股是對的，不該連結果一起推翻）
  *   整筆不應存在      → void
  *
  * 原紀錄一律保留、絕不修改。修改原紀錄會破壞其雜湊，使雜湊鏈斷裂——
@@ -132,7 +132,7 @@ function doVoid() {
   say('');
   say(`- 目標紀錄：\`${target.recordId}\``);
   say(`- 案號：${target.caseNo}`);
-  say(`- 原承辦股：**${target.resultUnitName}**（${target.resultCourtName}）`);
+  say(`- 原支援股：**${target.resultUnitName}**（${target.resultCourtName}）`);
   say('');
 
   const bins = binsFromState(state);
@@ -205,7 +205,7 @@ function doOffsetAmend() {
   say('## 抵分更正');
   say('');
   say(`- 目標紀錄：\`${target.recordId}\`（${target.caseNo}）`);
-  say(`- 承辦股：**${target.resultUnitName}**　← 不變`);
+  say(`- 支援股：**${target.resultUnitName}**　← 不變`);
   say(`- 抵分件數：${payload.offsetCountFrom} → **${payload.offsetCountTo}**`);
   say('');
   for (const c of payload.changes) {

@@ -56,7 +56,7 @@ import { loadAll, caseTypeOf, fmtTime } from './js/data.mjs';
 import { courtBadge, nav, esc, fail, versionBanner } from './js/ui.mjs';
 import * as gh from './js/github.mjs';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 document.getElementById('nav').innerHTML = nav('admin.html');
 const app = document.getElementById('app');
@@ -231,6 +231,39 @@ function render() {
     </div>
 
     <div class="card">
+      <h2>承辦股（${(config.requesters ?? []).filter((r) => r.active).length} 個在職）</h2>
+      <div class="body">
+        <p class="note">
+          承辦股是<strong>案件的承辦單位</strong>，需要支援；抽籤抽的是<strong>支援股</strong>。
+          兩者是不相交的名單——承辦股不參與支援抽籤，新增或停用都不會影響籤筒。<br>
+          抽籤時從這裡選取，因此必須先登錄。
+        </p>
+        ${(config.requesters ?? []).length === 0
+          ? '<p class="empty" style="margin-top:.8rem">尚未設定任何承辦股，抽籤前必須先新增</p>'
+          : (config.requesters ?? []).slice().sort((a, b) => a.order - b.order).map((r) => `
+          <div class="item${r.active ? '' : ' off'}">
+            <div class="who">${esc(r.name)}
+              <span style="font-size:.85rem;color:var(--text-muted)">${esc(r.id)}</span>
+              ${r.active ? '' : '<span class="badge b-plain">已停用</span>'}
+            </div>
+            <div class="acts">
+              ${r.active ? `
+                <button data-a="rename-requester" data-id="${esc(r.id)}" data-n="${esc(r.name)}">更名</button>
+                <button class="danger" data-a="deactivate-requester" data-id="${esc(r.id)}" data-n="${esc(r.name)}">停用</button>
+              ` : `<button data-a="reactivate-requester" data-id="${esc(r.id)}" data-n="${esc(r.name)}">啟用</button>`}
+            </div>
+          </div>`).join('')}
+
+        <div class="addform">
+          <div class="full"><strong style="font-size:1.05rem">新增承辦股</strong></div>
+          <div><label for="nr-id">代號</label><input type="text" id="nr-id" placeholder="rq-01"></div>
+          <div><label for="nr-name">名稱</label><input type="text" id="nr-name" placeholder="○股"></div>
+          <div class="full"><button class="btn" id="add-req">新增承辦股</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>案類</h2>
       <div class="body">
         ${config.caseTypes.map((c) => `
@@ -347,7 +380,7 @@ function render() {
   /* 逐項動作 */
   app.querySelectorAll('[data-a]').forEach((b) => b.addEventListener('click', () => {
     const a = b.dataset.a, id = b.dataset.id, n = b.dataset.n;
-    if (a === 'rename-unit' || a === 'rename-court' || a === 'rename-case-type') {
+    if (a === 'rename-unit' || a === 'rename-court' || a === 'rename-case-type' || a === 'rename-requester') {
       const name = prompt(`「${n}」的新名稱：`, n);
       if (!name || name === n) return;
       execute(a, { id, name }, `更名：${n} → ${name}`);
@@ -371,6 +404,12 @@ function render() {
     } else if (a === 'reactivate-unit') {
       if (!confirm(`確定讓「${n}」復職？\n\n自下次補籤起參與抽籤，本輪不投入籤。`)) return;
       execute(a, { id }, `${n} 復職`);
+    } else if (a === 'deactivate-requester') {
+      if (!confirm(`確定停用承辦股「${n}」？\n\n之後抽籤將無法選取，但不影響籤筒。`)) return;
+      execute(a, { id }, `停用承辦股 ${n}`);
+    } else if (a === 'reactivate-requester') {
+      if (!confirm(`確定重新啟用承辦股「${n}」？`)) return;
+      execute(a, { id }, `啟用承辦股 ${n}`);
     } else if (a === 'deactivate-court') {
       if (!confirm(`確定停用「${n}」？\n\n該庭底下若仍有在職股，系統會拒絕。`)) return;
       execute(a, { id }, `停用庭別 ${n}`);
@@ -412,6 +451,11 @@ function render() {
     if (!id || !name) return alert('代號與名稱為必填');
     execute('add-court', { id, name, shortName: val('nc-short') || name, color: val('nc-color') },
       `新增庭別 ${name}`);
+  });
+  document.getElementById('add-req').addEventListener('click', () => {
+    const id = val('nr-id'), name = val('nr-name');
+    if (!id || !name) return alert('代號與名稱為必填');
+    execute('add-requester', { id, name }, `新增承辦股 ${name}`);
   });
   document.getElementById('add-ct').addEventListener('click', () => {
     const id = val('nt-id'), name = val('nt-name');

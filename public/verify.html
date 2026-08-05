@@ -54,7 +54,7 @@ import { loadAll, isDemo, caseTypeOf, fmtTime } from './js/data.mjs';
 import { hashObject, canonicalizeOmitting } from './js/hashweb.mjs';
 import { nav, demoBanner, esc, fail, courtBadge, versionBanner } from './js/ui.mjs';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 document.getElementById('nav').innerHTML = nav('verify.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -177,7 +177,7 @@ try {
     const at = rec.drawable[rec.pickIndex];
     items.push({
       status: at === rec.resultUnitId ? S.PASS : S.FAIL,
-      title: '抽籤位置對應到紀錄的承辦股',
+      title: '抽籤位置對應到紀錄的支援股',
       detail: at === rec.resultUnitId
         ? `可抽集合第 ${rec.pickIndex + 1} 個位置為 <strong>${esc(rec.resultUnitName)}</strong>，與紀錄相符`
         : `<strong>不相符</strong>：第 ${rec.pickIndex + 1} 個位置為 ${esc(at ?? '（超出範圍）')}，紀錄為 ${esc(rec.resultUnitId)}`,

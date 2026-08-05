@@ -71,7 +71,7 @@ export function unitDisplayName(config, unitId) {
  * 抽籤結果清單，並標記每筆是否仍然生效。
  *
  *   voided     已由 VOID 紀錄作廢
- *   superseded 已由 REDRAW 取代（原承辦股迴避，該次抽籤不生效）
+ *   superseded 已由 REDRAW 取代（原支援股迴避，該次抽籤不生效）
  *
  * 兩者都必須排除在統計之外，否則同一件案子會被計算兩次，
  * 且迴避的股會被誤計為曾受分案。

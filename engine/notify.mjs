@@ -28,14 +28,15 @@ export function buildMessage({ config, records, dashboardUrl, includeCaseNo = tr
   if (records.length === 0) return null;
 
   const ct = (id) => config.caseTypes.find((c) => c.id === id)?.name ?? id;
-  const head = records.length === 1 ? '【分案抽籤結果】' : `【分案抽籤結果】共 ${records.length} 件`;
+  const head = records.length === 1 ? '【支援股抽籤結果】' : `【支援股抽籤結果】共 ${records.length} 件`;
 
   const lines = [head, ''];
 
   if (includeCaseNo) {
     for (const r of records) {
-      lines.push(`${ct(r.caseTypeId)}　${r.caseNo}`);
-      lines.push(`　→　${r.resultCourtName} ${r.resultUnitName}` +
+      lines.push(`${ct(r.caseTypeId)}　${r.caseNo}` +
+        (r.requesterUnitName ? `（承辦：${r.requesterUnitName}）` : ''));
+      lines.push(`　支援　${r.resultCourtName} ${r.resultUnitName}` +
         (r.offsetCount > 1 ? `（抵 ${r.offsetCount} 件）` : ''));
     }
   } else {

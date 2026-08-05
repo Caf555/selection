@@ -3,7 +3,7 @@
  * 迴避重抽的 GitHub Actions 執行腳本
  * SPEC.md §7.5、§4.2
  *
- * 適用於「抽出後才發現承辦股應迴避」。與作廢不同：作廢是這件案子不該
+ * 適用於「抽出後才發現支援股應迴避」。與作廢不同：作廢是這件案子不該
  * 被抽，重抽是這件案子仍要分案，只是不能分給該股。
  *
  * ── 為什麼重抽也要走兩階段承諾—開籤 ─────────────────────────
@@ -168,7 +168,7 @@ async function doCommit() {
       offsetMap: original.offsetMap,
       excludedUnitIds: excluded,
       excludeReason: IN.reason,
-      note: '因承辦股迴避而重新抽籤',
+      note: '因支援股迴避而重新抽籤',
     }],
     operator: `github:${IN.actor}`,
     targetRound, batchId, at: nowIso(),
@@ -290,8 +290,8 @@ async function doReveal() {
   say(`| 項目 | 內容 |`);
   say(`|---|---|`);
   say(`| 案號 | ${r.caseNo} |`);
-  say(`| 原承辦股（迴避） | ~~${rd.recusedUnitId}~~ |`);
-  say(`| **新承辦股** | **${r.resultUnitName}**（${r.resultCourtName}） |`);
+  say(`| 原支援股（迴避） | ~~${rd.recusedUnitId}~~ |`);
+  say(`| **新支援股** | **${r.resultUnitName}**（${r.resultCourtName}） |`);
   say(`| 迴避事由 | ${rd.recuseReason} |`);
   say(`| drand 輪次 | ${out.drand.round} |`);
   say(`| 重抽紀錄 | \`${rec.recordId}\` |`);

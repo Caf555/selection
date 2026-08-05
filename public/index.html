@@ -30,7 +30,7 @@
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime } from './js/data.mjs';
 import { renderBin, courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner } from './js/ui.mjs';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 document.getElementById('nav').innerHTML = nav('index.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -59,7 +59,10 @@ try {
     latestHtml = `<div class="latest">
       <div class="label">最新抽籤結果　${esc(caseTypeOf(config, latest.caseTypeId)?.name ?? '')}</div>
       <div class="caseno">${esc(latest.caseNo)}</div>
+      ${latest.requesterUnitName
+        ? `<div style="font-size:1.1rem;font-weight:700;color:var(--text-muted)">承辦股　${esc(latest.requesterUnitName)}</div>` : ''}
       <div class="arrow" aria-hidden="true">↓</div>
+      <div class="label" style="margin-bottom:0">抽出的支援股</div>
       <div class="result">${esc(latest.resultUnitName)}</div>
       <div class="row" style="font-size:1.15rem;font-weight:700">
         ${courtBadge(config, latest.resultCourtId)}
@@ -84,7 +87,7 @@ try {
         <caption class="sr-only">最近十筆抽籤紀錄</caption>
         <thead><tr>
           <th scope="col">時間</th><th scope="col">案類</th><th scope="col">案號</th>
-          <th scope="col">承辦股</th><th scope="col">庭別</th>
+          <th scope="col">承辦股</th><th scope="col">支援股</th><th scope="col">庭別</th>
           <th scope="col">抵分</th><th scope="col">狀態</th>
         </tr></thead>
         <tbody>${recent.map((r) => `
@@ -92,6 +95,7 @@ try {
             <td class="num">${fmtTime(r.at)}</td>
             <td>${esc(caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId)}</td>
             <td>${esc(r.caseNo)}</td>
+            <td>${esc(r.requesterUnitName ?? '—')}</td>
             <td><strong>${esc(r.resultUnitName)}</strong></td>
             <td>${courtBadge(config, r.resultCourtId, { short: true })}</td>
             <td class="num">${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'}</td>

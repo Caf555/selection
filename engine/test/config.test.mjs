@@ -42,6 +42,25 @@ describe('data/config.json 結構驗證', () => {
       ['drand roundOffset 為 0', (c) => { c.drand.roundOffset = 0; }, /承諾階段/],
       ['要求一致的端點數超過端點總數', (c) => { c.drand.minAgreeingEndpoints = 99; }, /永遠無法進行/],
       ['在職股所屬的庭已停用', (c) => { c.courts[0].active = false; }, /已停用/],
+
+      // 承辦股與支援股必須是不相交的名單。若同一個 ID 兩邊都有，
+      // 承辦股就可能被抽為自己案件的支援股，也會使統計把兩種身分混為一談。
+      ['承辦股與支援股 ID 相同', (c) => {
+        c.requesters = [{ id: c.units[0].id, name: '重疊', order: 1, active: true }];
+      }, /不相交/],
+      ['承辦股 ID 重複', (c) => {
+        c.requesters = [
+          { id: 'rq-01', name: '甲', order: 1, active: true },
+          { id: 'rq-01', name: '乙', order: 2, active: true },
+        ];
+      }, /承辦股 ID 重複/],
+      ['在職承辦股名稱重複', (c) => {
+        c.requesters = [
+          { id: 'rq-01', name: '同名', order: 1, active: true },
+          { id: 'rq-02', name: '同名', order: 2, active: true },
+        ];
+      }, /在職承辦股名稱重複/],
+      ['承辦股不是陣列', (c) => { c.requesters = {}; }, /必須是陣列/],
     ];
 
     for (const [name, mutate, pattern] of cases) {
@@ -71,6 +90,13 @@ describe('data/config.json 結構驗證', () => {
       );
       assert.deepEqual(bin.carryOverSkips, {});
     }
+  });
+
+  test('承辦股清單為空時仍屬合法設定（尚未登錄，抽籤時才要求）', () => {
+    const c = clone();
+    c.requesters = [];
+    assert.deepEqual(validateConfig(c), [],
+      '承辦股尚未登錄不應使整份設定無效，否則初次設定時會卡死');
   });
 
   test('drand 設定在 P2 上線前必須填入（目前允許為空）', () => {

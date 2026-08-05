@@ -27,7 +27,7 @@
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime, counts } from './js/data.mjs';
 import { courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner } from './js/ui.mjs';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 document.getElementById('nav').innerHTML = nav('history.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -51,7 +51,7 @@ try {
           </select>
         </div>
         <div>
-          <label for="f-unit">承辦股</label>
+          <label for="f-unit">支援股</label>
           <select id="f-unit">
             <option value="">全部股別</option>
             ${config.units.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}
@@ -89,9 +89,10 @@ try {
     </section>
 
     <section>
-      <h2 class="sec">受分統計</h2>
+      <h2 class="sec">支援統計</h2>
       <p style="font-size:0.9rem;color:var(--text-muted);margin-top:0">
-        依上方篩選條件計算。「折算件數」已計入重大案件抵分，較能反映實際工作量。
+        統計各股被抽中<strong>支援</strong>的次數（不是承辦件數）。依上方篩選條件計算。<br>
+        「折算件數」已計入重大案件抵分，較能反映實際支援負擔。
       </p>
       <div id="stats"></div>
     </section>
@@ -131,7 +132,8 @@ try {
     els.table.innerHTML = `<div class="tablewrap"><table>
       <thead><tr>
         <th scope="col">紀錄編號</th><th scope="col">時間</th><th scope="col">案類</th>
-        <th scope="col">案號</th><th scope="col">承辦股</th><th scope="col">庭別</th>
+        <th scope="col">案號</th><th scope="col">承辦股</th>
+        <th scope="col">支援股</th><th scope="col">庭別</th>
         <th scope="col">抵分</th><th scope="col">狀態</th><th scope="col">驗證</th>
       </tr></thead>
       <tbody>${rows.map((r) => `
@@ -140,6 +142,7 @@ try {
           <td class="num">${fmtTime(r.at)}</td>
           <td>${esc(caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId)}</td>
           <td>${esc(r.caseNo)}${r.amended ? '<br><span class="badge b-plain">已更正</span>' : ''}</td>
+          <td>${esc(r.requesterUnitName ?? '—')}</td>
           <td><strong>${esc(r.resultUnitName)}</strong></td>
           <td>${courtBadge(config, r.resultCourtId, { short: true })}</td>
           <td class="num">${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'}</td>
@@ -163,8 +166,8 @@ try {
 
     els.stats.innerHTML = `<div class="tablewrap"><table>
       <thead><tr>
-        <th scope="col">股別</th><th scope="col">庭別</th>
-        <th scope="col">受分件數</th><th scope="col">折算件數</th>
+        <th scope="col">支援股</th><th scope="col">庭別</th>
+        <th scope="col">支援件數</th><th scope="col">折算件數</th>
         <th scope="col">與平均的差距</th>
       </tr></thead>
       <tbody>${config.units.filter((u) => u.active).map((u) => {
@@ -197,11 +200,11 @@ try {
 
   document.getElementById('csv').addEventListener('click', () => {
     const rows = filtered();
-    const head = ['紀錄編號', '抽籤時間', '案類', '案號', '承辦股', '庭別', '抵分件數', '狀態', '執行者'];
+    const head = ['紀錄編號', '抽籤時間', '案類', '案號', '承辦股', '支援股', '庭別', '抵分件數', '狀態', '執行者'];
     const lines = rows.map((r) => [
       r.recordId, r.at,
       caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId,
-      r.caseNo, r.resultUnitName, r.resultCourtName,
+      r.caseNo, r.requesterUnitName ?? '', r.resultUnitName, r.resultCourtName,
       r.offsetCount ?? 1,
       r.voided ? '已作廢' : r.superseded ? '已重抽，不生效'
         : (r.type === 'REDRAW' ? '迴避重抽' : '有效'),

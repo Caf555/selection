@@ -66,7 +66,7 @@
 import { loadAll, caseTypeOf, applyAmends, fmtTime } from './js/data.mjs';
 import { courtStyle, esc, fail, versionBanner } from './js/ui.mjs';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const app = document.getElementById('app');
 
@@ -91,7 +91,7 @@ try {
     const flag = voided
       ? '<div class="note warn" style="margin-bottom:1rem"><strong>本件已作廢</strong>，本表僅供存查。</div>'
       : superseded
-        ? '<div class="note warn" style="margin-bottom:1rem"><strong>本次抽籤因承辦股迴避而重抽，本結果不生效。</strong></div>'
+        ? '<div class="note warn" style="margin-bottom:1rem"><strong>本次抽籤因支援股迴避而重抽，本結果不生效。</strong></div>'
         : '';
 
     const excl = (r.excludedUnitIds ?? [])
@@ -106,11 +106,12 @@ try {
         <dl style="margin:0">
           <div class="field"><dt>案類</dt><dd>${esc(ct?.name ?? r.caseTypeId)}</dd></div>
           <div class="field"><dt>案號</dt><dd>${esc(r.caseNo)}${r.amended ? '　（經更正）' : ''}</dd></div>
+          <div class="field"><dt>承辦股</dt><dd>${esc(r.requesterUnitName ?? '（未記錄）')}</dd></div>
           <div class="field"><dt>抽籤時間</dt><dd>${fmtTime(r.at)}</dd></div>
         </dl>
 
         <div class="headline">
-          <div style="font-size:0.9rem;color:var(--text-muted);font-weight:700">承辦股</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);font-weight:700">抽出的支援股</div>
           <div class="who">${esc(r.resultUnitName)}</div>
           <div style="font-size:1.2rem;font-weight:700">
             <span aria-hidden="true">${cs.glyph}</span> ${esc(r.resultCourtName)}

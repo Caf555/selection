@@ -67,6 +67,8 @@ export function buildCommitPayload({
     items: items.map((it, i) => ({
       itemSeq: i,
       caseNo: String(it.caseNo),
+      // 承辦股屬案件資料，必須在亂數產生前一併固定
+      requesterUnitId: it.requesterUnitId ?? null,
       offsetCount: it.offsetCount ?? 1,
       offsetMap: it.offsetMap ?? null,
       excludedUnitIds: (it.excludedUnitIds ?? []).slice().sort(),
@@ -167,6 +169,7 @@ export function executeReveal({ config, bins, payload, drandResult }) {
       caseNo: payload.items[i].caseNo,
       note: payload.items[i].note,
       excludeReason: payload.items[i].excludeReason,
+      requesterUnitId: payload.items[i].requesterUnitId ?? null,
     })),
     drand: {
       chainHash: drandResult.chainHash,

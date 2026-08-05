@@ -122,6 +122,8 @@ function resolveItems() {
     const caseNo = String(it.caseNo ?? '').trim();
     if (!caseNo) die(`${where}缺少案號`);
 
+    const requesterUnitId = String(it.requesterUnitId ?? '').trim() || null;
+
     const offsetCount = it.offsetCount === undefined ? 1 : Number(it.offsetCount);
     if (!Number.isInteger(offsetCount) || offsetCount < 1) {
       die(`${where}（${caseNo}）的抵分件數必須為 1 以上的整數，收到 ${it.offsetCount}`);
@@ -137,6 +139,7 @@ function resolveItems() {
 
     return {
       caseNo,
+      requesterUnitId,
       offsetCount,
       offsetMap: it.offsetMap ?? null,
       excludedUnitIds,
@@ -144,6 +147,25 @@ function resolveItems() {
       note: String(it.note ?? IN.note ?? ''),
     };
   });
+}
+
+/** 承辦股必須是已登錄且在職的（SPEC §3.8） */
+function checkRequesters(config, items) {
+  const list = config.requesters ?? [];
+  for (const it of items) {
+    if (!it.requesterUnitId) {
+      die(
+        `案號 ${it.caseNo} 未指定承辦股。\n` +
+        `  承辦股是案件的承辦單位，需與案號一併輸入。\n` +
+        (list.length === 0
+          ? `  目前尚未設定任何承辦股，請先至「組織管理」頁新增。`
+          : `  可選：${list.filter((r) => r.active).map((r) => `${r.id}（${r.name}）`).join('、')}`)
+      );
+    }
+    const r = list.find((x) => x.id === it.requesterUnitId);
+    if (!r) die(`案號 ${it.caseNo} 的承辦股 ${it.requesterUnitId} 不存在`);
+    if (!r.active) die(`案號 ${it.caseNo} 的承辦股 ${r.name} 已停用`);
+  }
 }
 
 function binsFromState(state) {
@@ -210,6 +232,8 @@ function doAuthorize() {
 
   const items = resolveItems();
   if (items.length === 0) die('未輸入任何案號');
+  checkRequesters(config, items);
+  say(`- 承辦股檢查：通過`);
 
   // 個資樣式檢查（SPEC §8.4）
   for (const it of items) {
@@ -266,6 +290,7 @@ async function doCommit() {
 
   const items = resolveItems();
   if (items.length === 0) die('未輸入任何案號');
+  checkRequesters(config, items);
   if (!config.caseTypes.some((c) => c.id === IN.caseTypeId && c.active)) {
     die(`案類不存在或未啟用：${IN.caseTypeId}`);
   }
@@ -349,8 +374,9 @@ async function doReveal() {
   say('### 抽籤結果');
   say('');
   const unitName = (id) => config.units.find((u) => u.id === id)?.name ?? id;
-  say('| 案號 | 承辦股 | 庭別 | 抵分 | 迴避 |');
-  say('|---|---|---|---|---|');
+  const reqName = (id) => (config.requesters ?? []).find((r) => r.id === id)?.name ?? id ?? '—';
+  say('| 案號 | 承辦股 | 支援股 | 庭別 | 抵分 | 迴避 |');
+  say('|---|---|---|---|---|---|');
 
   for (let i = 0; i < out.results.length; i++) {
     const r = out.results[i];
@@ -366,6 +392,8 @@ async function doReveal() {
         note: r.note ?? '',
         caseTypeName: config.caseTypes.find((c) => c.id === r.caseTypeId).name,
         result: r,
+        requesterUnitId: r.requesterUnitId ?? null,
+        requesterUnitName: r.requesterUnitId ? reqName(r.requesterUnitId) : null,
         drand: out.drand,
         commitPayloadHash: out.payloadHash,
       }),
@@ -374,7 +402,7 @@ async function doReveal() {
     appendHistory(rec);
     prev = rec.recordHash;
     const excl = (r.excludedUnitIds ?? []).map(unitName).join('、');
-    say(`| ${r.caseNo} | **${r.resultUnitName}** | ${r.resultCourtName} | ` +
+    say(`| ${r.caseNo} | ${reqName(r.requesterUnitId)} | **${r.resultUnitName}** | ${r.resultCourtName} | ` +
         `${r.offsetCount > 1 ? r.offsetCount + ' 件' : '—'} | ${excl || '—'} |`);
   }
 

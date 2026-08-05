@@ -24,6 +24,16 @@ const OUT = fileURLToPath(new URL('../demo/', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
 const config = loadConfig();
+
+// 示範用的承辦股。正式資料的承辦股請於「組織管理」頁登錄。
+if ((config.requesters ?? []).length === 0) {
+  config.requesters = [
+    { id: 'rq-01', name: '範例甲股', order: 1, active: true, note: '示範資料' },
+    { id: 'rq-02', name: '範例乙股', order: 2, active: true, note: '示範資料' },
+  ];
+}
+const REQ = config.requesters.filter((r) => r.active);
+
 const bins = createAllBins(config);
 const pick = makeSeededPicker('demo-seed-2026');
 
@@ -66,6 +76,7 @@ function doDraw({ caseTypeId, offsetCount = 1, offsetMap = null, excludedUnitIds
     config, bins, caseTypeId, offsetCount, offsetMap, excludedUnitIds, pick, itemSeq: seq,
   });
   seq += 1;
+  const req = REQ[seq % REQ.length];
   return push(
     buildDrawRecord({
       seq,
@@ -75,6 +86,8 @@ function doDraw({ caseTypeId, offsetCount = 1, offsetMap = null, excludedUnitIds
       caseNo: caseNo(caseTypeId),
       caseTypeName: config.caseTypes.find((c) => c.id === caseTypeId).name,
       note,
+      requesterUnitId: req.id,
+      requesterUnitName: req.name,
       result: { ...result, excludeReason },
     })
   );

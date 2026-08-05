@@ -1,8 +1,26 @@
 {
   "schemaVersion": 1,
-  "appVersion": "1.2.0",
+  "appVersion": "1.3.0",
   "_appVersion": "前端版本號。修改 public/ 底下的檔案後必須同步提高此值與各頁面的 APP_VERSION，否則使用者的瀏覽器會繼續執行快取中的舊版程式。engine/test/version.test.mjs 會檢查兩者一致。",
-  "updatedAt": "2026-08-04T00:00:00+08:00",
+  "_terminology": "units＝支援股，即參與抽籤的 8 個股，籤筒輪分的就是這個。requesters＝承辦股，案件的承辦單位，需要支援，於抽籤時與案號一併輸入。兩者為不相交的名單，承辦股不參與支援抽籤。",
+  "updatedAt": "2026-08-04T21:21:15.407+08:00",
+  "requesters": [
+    {
+      "id": "rq-01",
+      "name": "範例甲股",
+      "order": 1,
+      "active": true,
+      "note": "示範資料"
+    },
+    {
+      "id": "rq-02",
+      "name": "範例乙股",
+      "order": 2,
+      "active": true,
+      "note": "示範資料"
+    }
+  ],
+  "_requesters": "承辦股名單。請於「組織管理」頁新增，勿直接編輯本檔。",
   "courts": [
     {
       "id": "ct-16",
@@ -168,7 +186,7 @@
       "enabled": true
     },
     "line": {
-      "enabled": false,
+      "enabled": true,
       "mode": "broadcast",
       "includeCaseNo": true,
       "_mode": "broadcast＝推播給所有加官方帳號好友的人，不需 groupId；push＝推播至指定群組，需設定 LINE_GROUP_IDS"
