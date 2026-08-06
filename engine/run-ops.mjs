@@ -139,23 +139,48 @@ function doVoid() {
   const bins = binsFromState(state);
   const before = Object.fromEntries(Object.keys(bins).map((k) => [k, bins[k].tickets.length]));
 
-  const payload = applyVoid({ bins, history, targetRecord: target, reason: IN.reason });
+  const payload = applyVoid({ config, bins, history, targetRecord: target, reason: IN.reason });
   writeBinsToState(state, bins);
   const rec = commitRecord(state, 'VOID', payload);
 
-  say('### 籤筒已回復');
+  const isRewind = payload.mode === 'rewind';
+  say(`### 籤筒處理方式：${isRewind ? '回溯回復' : '補償退還'}`);
+  say('');
+  say(isRewind
+    ? '本筆是該籤筒最近一筆且其後未再變動，因此可**完整回溯**。'
+    : '本筆之後已有其他仍生效的抽籤，無法回溯——回溯會使那些抽籤當初面對的\n' +
+      '籤筒不復存在，其結果將失去依據。因此改採**補償**：只把本次消耗的籤\n' +
+      '退還至目前籤筒，後續抽籤完全不動。');
   say('');
   say('| 籤筒 | 作廢前 | 作廢後 | 輪次 |');
   say('|---|---|---|---|');
   for (const binId of payload.restoredBins) {
+    if (!bins[binId]) continue;
     const ct = config.caseTypes.find((c) => c.id === binId);
     say(`| ${ct?.name ?? binId} | ${before[binId]} 支 | ${bins[binId].tickets.length} 支 | 第 ${bins[binId].cycle} 輪 |`);
   }
   say('');
+  for (const c of payload.changes) {
+    const ct = config.caseTypes.find((x) => x.id === c.binId);
+    const parts = [];
+    if (c.drawnTicketReturned) parts.push(`退還抽出的籤 ${c.drawnTicketReturned} 支`);
+    if (c.offsetReversed) {
+      parts.push(`沖銷抵分 ${c.offsetReversed} 件` +
+        `（欠籤 ${c.carryOverCancelled}、退還籤 ${c.ticketsReturned}）`);
+    }
+    if (c.rewoundTo !== undefined) parts.push(`回復為 ${c.rewoundTo} 支（第 ${c.cycle} 輪）`);
+    if (c.skipped) parts.push(`⚠ ${c.skipped}`);
+    if (parts.length) say(`- ${ct?.name ?? c.binId}：${parts.join('、')}`);
+  }
+  if (payload.unaffectedLaterRecords.length) {
+    say('');
+    say(`- 不受影響的後續抽籤：${payload.unaffectedLaterRecords.join('、')}`);
+  }
+  say('');
   say(`作廢紀錄：\`${rec.recordId}\``);
   say('');
-  say('> 原抽籤紀錄完整保留並標示為已作廢。籤筒的籤數、輪次與抵分欠籤');
-  say('> 均已回復至該次抽籤之前的狀態，不影響後續分案的公平性。');
+  say('> 原抽籤紀錄完整保留並標示為已作廢，作廢的時間、理由與執行者');
+  say('> 皆記入歷史，可於歷史查詢頁查閱。');
 }
 
 /* ── amend ───────────────────────────────────────────────── */

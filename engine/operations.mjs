@@ -46,44 +46,123 @@ function binFingerprint(bin) {
  * 直接比對籤筒現況與該筆的 binsAfter 才是正確的判準：它不必推理紀錄之間
  * 的相互抵銷關係，只問「現在的狀態是不是就是當時的狀態」。
  */
-export function assertBinsUnchangedSince(bins, targetRecord, history = []) {
+/**
+ * 判斷作廢／重抽應採用哪一種模式（SPEC §7.4）。
+ *
+ * ── 為什麼需要兩種模式 ─────────────────────────────────────
+ *
+ * 抽籤結果是一條相依鏈：每一次抽籤的結果取決於當時的籤筒，而籤筒取決於
+ * 先前所有抽籤。批次抽 5 件時，第 3 件面對的籤筒已含有第 2 件的效果。
+ *
+ * 因此若要作廢中間某一筆，無法「把籤筒倒回去」——倒回去之後，第 3～5 件
+ * 當初面對的籤筒就不存在了，它們的 pickIndex 會指向不同的股。更關鍵的是
+ * 承諾—開籤的約束：每次抽籤的亂數綁定在含有 binsBefore 的承諾雜湊上，
+ * 籤筒一變，等於拿一份承諾去證明它沒有承諾過的事。
+ *
+ *   rewind      目標是最近一筆且其後籤筒未變動 → 完整回復，連輪次與欠籤都精確
+ *   compensate  其他情況 → 不回溯，只把該次消耗的籤退還至目前籤筒
+ *
+ * compensate 的正當性：籤筒是公平性的記帳工具。該次作廢代表該股實際上沒有
+ * 承擔那件案子，那支籤就該回來；至於回到「當時的位置」或「現在」，對長期
+ * 均衡沒有差別。代價是籤筒的演進序列與「該件從未發生」的假想情境不同，
+ * 但那個情境本來就無法重現，除非連同後續的合法抽籤一起重抽。
+ */
+export function voidMode(bins, targetRecord) {
   const after = targetRecord.binsAfter;
-  if (!after || Object.keys(after).length === 0) {
-    throw new LotteryError(
-      ERR.VOID_NOT_LATEST,
-      `紀錄 ${targetRecord.recordId} 沒有抽籤後的籤筒快照，無法確認可否安全回復。`
-    );
-  }
+  if (!after || Object.keys(after).length === 0) return 'compensate';
 
   for (const binId of Object.keys(after)) {
     const now = bins[binId];
-    if (!now) {
-      throw new LotteryError(ERR.UNKNOWN_CASETYPE, `籤筒不存在：${binId}`);
-    }
-    if (binFingerprint(now) !== binFingerprint(after[binId])) {
-      // 找出仍在生效、且動過同一籤筒的後續紀錄，讓訊息能指出該先處理哪一筆
-      const voided = new Set(history.filter((r) => r.type === 'VOID').map((r) => r.targetRecordId));
-      const idx = history.findIndex((r) => r.recordId === targetRecord.recordId);
-      const blocker = history.slice(idx + 1).find((r) => {
-        if (!['DRAW', 'REDRAW', 'OFFSET_AMEND', 'BIN_ADJUST', 'OFFLINE_BACKFILL'].includes(r.type)) return false;
-        if (voided.has(r.recordId)) return false; // 已作廢者不再有效果
-        const t = Object.keys(r.binsBefore ?? (r.caseTypeId ? { [r.caseTypeId]: 1 } : {}));
-        return t.includes(binId);
-      });
+    if (!now) return 'compensate';
+    if (binFingerprint(now) !== binFingerprint(after[binId])) return 'compensate';
+  }
+  return 'rewind';
+}
 
-      throw new LotteryError(
-        ERR.VOID_NOT_LATEST,
-        `${targetRecord.recordId} 抽籤後，籤筒「${binId}」已再度變動，無法直接作廢。` +
-          (blocker
-            ? `\n  請先處理 ${blocker.recordId}（${blocker.type}）。`
-            : `\n  籤筒現況與該次抽籤後的狀態不符，請先確認期間發生了什麼變動。`) +
-          `\n  當時 ${after[binId].tickets.length} 支（第 ${after[binId].cycle} 輪）` +
-          `／目前 ${now.tickets.length} 支（第 ${now.cycle} 輪）`,
-        { blockedBy: blocker?.recordId ?? null, binId }
-      );
+/** 找出該筆之後仍然生效、且動過同一籤筒的紀錄，供說明用 */
+function laterEffectiveRecords(history, targetRecord) {
+  const voided = new Set(history.filter((r) => r.type === 'VOID').map((r) => r.targetRecordId));
+  const idx = history.findIndex((r) => r.recordId === targetRecord.recordId);
+  if (idx === -1) return [];
+  const touched = Object.keys(targetRecord.binsAfter ?? {});
+  return history.slice(idx + 1).filter((r) => {
+    if (!['DRAW', 'REDRAW', 'OFFSET_AMEND', 'BIN_ADJUST', 'OFFLINE_BACKFILL'].includes(r.type)) return false;
+    if (voided.has(r.recordId)) return false;
+    const t = Object.keys(r.binsBefore ?? (r.caseTypeId ? { [r.caseTypeId]: 1 } : {}));
+    return t.some((b) => touched.includes(b));
+  });
+}
+
+/**
+ * 補償式回復：不回溯籤筒，只把該次消耗掉的籤退還至目前籤筒。
+ *
+ * 只會增加籤數，因此**不需要也不可以執行補籤檢查**——補籤的觸發條件是
+ * 籤筒過低，補償只會使其變高。
+ *
+ * @param {boolean} returnDrawnTicket 是否退還抽出的那支籤。
+ *        迴避重抽且設定為「原籤不放回」時為 false，但抵分後果仍須沖銷。
+ */
+export function applyRedrawCompensation(args) {
+  return compensate(args);
+}
+
+function compensate({ config, bins, record, returnDrawnTicket = true }) {
+  const unitId = record.resultUnitId;
+  const unit = config.units.find((u) => u.id === unitId);
+  // 已停用的股不該有籤留在籤筒內，故不退還
+  const unitActive = unit ? unit.active !== false : false;
+  const changes = [];
+
+  if (returnDrawnTicket) {
+    const bin = bins[record.caseTypeId];
+    if (unitActive) {
+      bin.tickets.push(unitId);
+      changes.push({ binId: record.caseTypeId, drawnTicketReturned: 1 });
+    } else {
+      changes.push({
+        binId: record.caseTypeId,
+        drawnTicketReturned: 0,
+        skipped: `${unit ? unit.name : unitId} 已停用，籤不退還`,
+      });
     }
   }
-  return true;
+
+  // 沖銷抵分後果。以 offsetMap 的原始扣減量為準：先沖銷尚未消化的欠籤，
+  // 其餘退還為實際的籤。如此不論當初是自籤筒扣除、或記為欠籤後於補籤時扣除，
+  // 都能正確還原該股應得的支數。
+  for (const [binId, extra] of Object.entries(record.offsetMap ?? {})) {
+    if (!extra || extra <= 0) continue;
+    const bin = bins[binId];
+    if (!bin) continue;
+
+    let refund = extra;
+    const owed = bin.carryOverSkips[unitId] ?? 0;
+    const cancelled = Math.min(owed, refund);
+    if (cancelled > 0) {
+      const left = owed - cancelled;
+      if (left > 0) bin.carryOverSkips[unitId] = left;
+      else delete bin.carryOverSkips[unitId];
+    }
+    refund -= cancelled;
+
+    let returned = 0;
+    if (unitActive) {
+      for (let i = 0; i < refund; i++) bin.tickets.push(unitId);
+      returned = refund;
+    }
+    changes.push({
+      binId, offsetReversed: extra,
+      carryOverCancelled: cancelled,
+      ticketsReturned: returned,
+      ...(unitActive ? {} : { skipped: '該股已停用，籤不退還' }),
+    });
+  }
+
+  for (const binId of Object.keys(bins)) {
+    bins[binId].tickets = normalizeBin(bins[binId].tickets, config);
+  }
+
+  return changes;
 }
 
 /**
@@ -194,30 +273,51 @@ export function applyOffsetAmend({ config, bins, targetRecord, newOffsetCount, n
  * VOID — 作廢整筆抽籤並完全回復籤筒（SPEC §7.4）
  * 僅能作廢該籤筒最近一筆且其後未再變動的紀錄。
  */
-export function applyVoid({ bins, history, targetRecord, reason }) {
+export function applyVoid({ config, bins, history = [], targetRecord, reason }) {
   if (!reason || !String(reason).trim()) {
     throw new LotteryError(ERR.CHAIN_BROKEN, 'VOID 必須填寫作廢理由');
   }
-  if (targetRecord.voided) {
+  if (targetRecord.voided || history.some((r) => r.type === 'VOID' && r.targetRecordId === targetRecord.recordId)) {
     throw new LotteryError(ERR.VOID_NOT_LATEST, `紀錄 ${targetRecord.recordId} 已作廢`);
   }
-  assertBinsUnchangedSince(bins, targetRecord, history);
-
-  const restored = [];
-  for (const binId of Object.keys(targetRecord.binsBefore)) {
-    const snap = targetRecord.binsBefore[binId];
-    bins[binId].tickets = snap.tickets.slice();
-    bins[binId].cycle = snap.cycle;
-    bins[binId].carryOverSkips = { ...snap.carryOverSkips };
-    restored.push(binId);
+  if (!config) {
+    throw new LotteryError(ERR.CHAIN_BROKEN, 'applyVoid 需要 config 以判斷股別是否仍在職');
   }
+
+  const mode = voidMode(bins, targetRecord);
+  const touched = Object.keys(targetRecord.binsAfter ?? targetRecord.binsBefore ?? {});
+  const before = Object.fromEntries(touched.map((id) => [id, bins[id]?.tickets.length ?? 0]));
+
+  let changes = [];
+  if (mode === 'rewind') {
+    for (const binId of Object.keys(targetRecord.binsBefore)) {
+      const snap = targetRecord.binsBefore[binId];
+      bins[binId].tickets = snap.tickets.slice();
+      bins[binId].cycle = snap.cycle;
+      bins[binId].carryOverSkips = { ...snap.carryOverSkips };
+      changes.push({ binId, rewoundTo: snap.tickets.length, cycle: snap.cycle });
+    }
+  } else {
+    changes = compensate({ config, bins, record: targetRecord });
+  }
+
+  const later = mode === 'compensate' ? laterEffectiveRecords(history, targetRecord) : [];
 
   return {
     targetRecordId: targetRecord.recordId,
     reason: String(reason),
-    restoredBins: restored,
+    mode,
+    // 兩種模式的語意不同，紀錄中必須明確區分，否則第三人無從判斷
+    // 目前籤筒狀態的由來
+    modeNote: mode === 'rewind'
+      ? '籤筒已完整回復至該次抽籤之前（籤數、輪次、抵分欠籤）'
+      : `籤筒未回溯，僅將該次消耗的籤退還至目前籤筒；其後 ${later.length} 筆仍生效的抽籤不受影響`,
+    unaffectedLaterRecords: later.map((r) => r.recordId),
+    changes,
+    restoredBins: touched,
+    ticketsBefore: before,
     binsAfter: Object.fromEntries(
-      restored.map((id) => [
+      touched.filter((id) => bins[id]).map((id) => [
         id,
         { tickets: bins[id].tickets.slice(), cycle: bins[id].cycle, carryOverSkips: { ...bins[id].carryOverSkips } },
       ])
@@ -247,24 +347,30 @@ export function applyRedraw({
       `迴避股 ${recusedUnitId} 與原抽籤結果 ${originalRecord.resultUnitId} 不符`
     );
   }
-  assertBinsUnchangedSince(bins, originalRecord, history);
-
-  // 1. 回復至原次抽籤前的狀態
-  for (const binId of Object.keys(originalRecord.binsBefore)) {
-    const snap = originalRecord.binsBefore[binId];
-    bins[binId].tickets = snap.tickets.slice();
-    bins[binId].cycle = snap.cycle;
-    bins[binId].carryOverSkips = { ...snap.carryOverSkips };
-  }
-
-  // 2. 依設定決定原籤是否放回
   const returnsTicket = config.rules.redrawReturnsTicket !== false;
+  const mode = voidMode(bins, originalRecord);
   const preRefills = [];
-  if (!returnsTicket) {
-    const bin = bins[originalRecord.caseTypeId];
-    const idx = bin.tickets.indexOf(recusedUnitId);
-    if (idx !== -1) bin.tickets.splice(idx, 1);
-    preRefills.push(...refillLoop(bin, config, originalRecord.caseTypeId, 'redraw-no-return'));
+
+  if (mode === 'rewind') {
+    // 1. 回復至原次抽籤前的狀態
+    for (const binId of Object.keys(originalRecord.binsBefore)) {
+      const snap = originalRecord.binsBefore[binId];
+      bins[binId].tickets = snap.tickets.slice();
+      bins[binId].cycle = snap.cycle;
+      bins[binId].carryOverSkips = { ...snap.carryOverSkips };
+    }
+    // 2. 依設定決定原籤是否放回
+    if (!returnsTicket) {
+      const bin = bins[originalRecord.caseTypeId];
+      const idx = bin.tickets.indexOf(recusedUnitId);
+      if (idx !== -1) bin.tickets.splice(idx, 1);
+      preRefills.push(...refillLoop(bin, config, originalRecord.caseTypeId, 'redraw-no-return'));
+    }
+  } else {
+    // 中間某筆的重抽：不回溯籤筒，只沖銷該次的效果（SPEC §7.4）。
+    // returnDrawnTicket 直接對應 redrawReturnsTicket——迴避者未實際受分案時
+    // 應回復其受分機會，設定為不放回時則僅沖銷抵分。
+    compensate({ config, bins, record: originalRecord, returnDrawnTicket: returnsTicket });
   }
 
   // 3. 排除該股重抽
@@ -283,6 +389,10 @@ export function applyRedraw({
     recusedUnitId,
     recuseReason: String(recuseReason),
     ticketReturned: returnsTicket,
+    mode,
+    modeNote: mode === 'rewind'
+      ? '籤筒已回復至原次抽籤之前後重抽'
+      : '籤筒未回溯，僅沖銷原次的效果後以目前籤筒重抽；其後仍生效的抽籤不受影響',
     preRefills,
     result,
   };

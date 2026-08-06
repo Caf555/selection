@@ -335,6 +335,8 @@ th {
 
 tbody tr:nth-child(even) { background: var(--surface); }
 tbody tr.voided td { text-decoration: line-through; color: var(--text-muted); }
+/* 作廢說明本身不該被刪除線蓋掉——那正是要讓人讀的內容 */
+tbody tr.voided td div { text-decoration: none; }
 
 td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 

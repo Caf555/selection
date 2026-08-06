@@ -27,7 +27,7 @@
 import { loadAll, isDemo, caseTypeOf, effectiveDraws, applyAmends, fmtTime, counts } from './js/data.mjs';
 import { courtBadge, statusBadge, nav, demoBanner, esc, fail, versionBanner, terms } from './js/ui.mjs';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 document.getElementById('nav').innerHTML = nav('history.html');
 document.getElementById('banner').innerHTML = demoBanner(isDemo());
@@ -83,8 +83,11 @@ try {
       <h2 class="sec">抽籤紀錄</h2>
       <p class="note" style="margin-bottom:1rem">
         <strong>紀錄無法刪除。</strong>歷史只增不刪才能讓雜湊鏈成立——能刪除的紀錄等於沒有紀錄。<br>
-        抽錯或登錯時，改以<strong>作廢</strong>或<strong>更正</strong>處理：原紀錄保留並標示狀態，
-        作廢會把籤筒完整回復到抽籤前。相關作業在 GitHub Actions 分頁，需授權者執行。
+        抽錯或登錯時，改以<strong>作廢</strong>或<strong>更正</strong>處理，原紀錄一律保留並標示狀態。
+        作廢的理由、時間與執行者都記在下表，可直接查閱。<br>
+        籤筒的處理分兩種：若作廢的是最近一筆，<strong>回溯回復</strong>至抽籤前；
+        若其後已有其他仍生效的抽籤，則採<strong>補償退還</strong>——只把該次消耗的籤退還，
+        後續抽籤的結果完全不動（回溯會使那些抽籤失去依據）。
       </p>
       <div id="table"></div>
     </section>
@@ -142,7 +145,12 @@ try {
           <td class="num">${esc(r.recordId)}</td>
           <td class="num">${fmtTime(r.at)}</td>
           <td>${esc(caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId)}</td>
-          <td>${esc(r.caseNo)}${r.amended ? '<br><span class="badge b-plain">已更正</span>' : ''}</td>
+          <td>${esc(r.caseNo)}${r.amended ? '<br><span class="badge b-plain">已更正</span>' : ''}${
+            r.voidRecord ? `<div style="font-size:.85rem;font-weight:500;color:var(--danger);margin-top:.3rem;text-decoration:none">
+              作廢理由：${esc(r.voidRecord.reason ?? '（未記載）')}<br>
+              ${esc(r.voidRecord.recordId)}　${fmtTime(r.voidRecord.at)}　${esc(r.voidRecord.operator ?? '')}<br>
+              籤筒處理：${r.voidRecord.mode === 'compensate' ? '補償退還（後續抽籤不受影響）' : '回溯回復'}
+            </div>` : ''}</td>
           <td>${esc(r.requesterUnitName ?? '—')}</td>
           <td><strong>${esc(r.resultUnitName)}</strong></td>
           <td>${courtBadge(config, r.resultCourtId, { short: true })}</td>
@@ -201,7 +209,8 @@ try {
 
   document.getElementById('csv').addEventListener('click', () => {
     const rows = filtered();
-    const head = ['紀錄編號', '抽籤時間', '案類', '案號', T.requester, T.drawee, '庭別', '抵分件數', '狀態', '執行者'];
+    const head = ['紀錄編號', '抽籤時間', '案類', '案號', T.requester, T.drawee, '庭別',
+                  '抵分件數', '狀態', '執行者', '作廢紀錄編號', '作廢時間', '作廢理由', '籤筒處理方式'];
     const lines = rows.map((r) => [
       r.recordId, r.at,
       caseTypeOf(config, r.caseTypeId)?.name ?? r.caseTypeId,
@@ -210,6 +219,10 @@ try {
       r.voided ? '已作廢' : r.superseded ? '已重抽，不生效'
         : (r.type === 'REDRAW' ? '迴避重抽' : '有效'),
       r.operator ?? '',
+      r.voidRecord?.recordId ?? '',
+      r.voidRecord?.at ?? '',
+      r.voidRecord?.reason ?? '',
+      r.voidRecord ? (r.voidRecord.mode === 'compensate' ? '補償退還' : '回溯回復') : '',
     ]);
     const csv = [head, ...lines]
       .map((cols) => cols.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))

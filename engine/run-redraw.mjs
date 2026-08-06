@@ -33,7 +33,7 @@ import {
 import { latestRound, targetRoundFor, waitForRound } from './drand.mjs';
 import { buildCommitPayload, commitPayloadHash, executeReveal, binsHash } from './commit.mjs';
 import { buildDrawRecord, sealRecord, makeBatchId } from './records.mjs';
-import { assertBinsUnchangedSince } from './operations.mjs';
+import { voidMode, applyRedrawCompensation } from './operations.mjs';
 import { refillLoop } from './lottery.mjs';
 import { terms } from './terms.mjs';
 import { LotteryError } from './errors.mjs';
@@ -114,35 +114,44 @@ async function doCommit() {
     die(`${IN.recordId} 已經重抽過了`);
   }
 
-  // 籤筒必須仍停在原次抽籤後的狀態，否則回復的會是錯誤的籤筒
-  assertBinsUnchangedSince(binsFromState(state), original, history);
+  // 判斷可否回溯。中間某筆的重抽改採補償式，不回溯籤筒（SPEC §7.4）。
+  const redrawMode = voidMode(binsFromState(state), original);
 
   say(`- 原抽籤：\`${original.recordId}\`　${original.caseNo}　→　**${original.resultUnitName}**`);
   say(`- 迴避事由：${IN.reason}`);
   say('');
 
-  // ── 在記憶體中回復籤筒，不寫入 state.json ──────────────
+  // ── 在記憶體中算出重抽的起始籤筒，不寫入 state.json ──────
   const bins = binsFromState(state);
   const currentHash = binsHash(bins, Object.keys(original.binsBefore));
-
-  for (const binId of Object.keys(original.binsBefore)) {
-    const snap = original.binsBefore[binId];
-    bins[binId] = {
-      tickets: snap.tickets.slice(),
-      cycle: snap.cycle,
-      carryOverSkips: { ...snap.carryOverSkips },
-    };
-  }
-
   const returnsTicket = config.rules.redrawReturnsTicket !== false;
   const preRefills = [];
-  if (!returnsTicket) {
-    const bin = bins[original.caseTypeId];
-    const idx = bin.tickets.indexOf(original.resultUnitId);
-    if (idx !== -1) bin.tickets.splice(idx, 1);
-    preRefills.push(...refillLoop(bin, config, original.caseTypeId, 'redraw-no-return'));
+
+  if (redrawMode === 'rewind') {
+    for (const binId of Object.keys(original.binsBefore)) {
+      const snap = original.binsBefore[binId];
+      bins[binId] = {
+        tickets: snap.tickets.slice(),
+        cycle: snap.cycle,
+        carryOverSkips: { ...snap.carryOverSkips },
+      };
+    }
+    if (!returnsTicket) {
+      const bin = bins[original.caseTypeId];
+      const idx = bin.tickets.indexOf(original.resultUnitId);
+      if (idx !== -1) bin.tickets.splice(idx, 1);
+      preRefills.push(...refillLoop(bin, config, original.caseTypeId, 'redraw-no-return'));
+    }
+  } else {
+    // 其後已有仍生效的抽籤，無法回溯——回溯會使那些抽籤當初面對的籤筒
+    // 不復存在，其結果將失去依據。改採補償（SPEC §7.4）。
+    applyRedrawCompensation({ config, bins, record: original, returnDrawnTicket: returnsTicket });
   }
 
+  say(`- 籤筒處理方式：**${redrawMode === 'rewind' ? '回溯回復' : '補償退還'}**`);
+  say(redrawMode === 'rewind'
+    ? '  > 本筆是該籤筒最近一筆，可完整回溯至原次抽籤之前。'
+    : '  > 本筆之後已有其他仍生效的抽籤，改以補償方式沖銷原次效果，後續抽籤不受影響。');
   say(`- 原籤是否放回：**${returnsTicket ? '放回' : '不放回'}**`
     + `（config.rules.redrawReturnsTicket）`);
   say(returnsTicket

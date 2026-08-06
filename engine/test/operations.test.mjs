@@ -138,7 +138,7 @@ describe('更正與作廢（SPEC §14 測試 21～25）', () => {
     assert.equal(rec.resultUnitId, U.忠, '原紀錄的承辦股不得變動');
   });
 
-  test('#23 VOID 最近一筆 → 籤筒完全回復至 binBefore', () => {
+  test('#23 VOID 最近一筆 → 回溯模式，籤筒完全回復至 binBefore', () => {
     const config = freshConfig();
     const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
     const snapshot = {
@@ -150,12 +150,12 @@ describe('更正與作廢（SPEC §14 測試 21～25）', () => {
     const rec = draw(config, bins, { offsetCount: 3 });
     assert.notDeepEqual(bins.jinsu.tickets, snapshot.tickets);
 
-    const r = applyVoid({ bins, history: [rec], targetRecord: rec, reason: '抽錯案類' });
+    const r = applyVoid({ config, bins, history: [rec], targetRecord: rec, reason: '抽錯案類' });
 
+    assert.equal(r.mode, 'rewind');
     assert.deepEqual(bins.jinsu.tickets, snapshot.tickets, '籤筒應完全回復');
     assert.equal(bins.jinsu.cycle, snapshot.cycle);
     assert.deepEqual(bins.jinsu.carryOverSkips, snapshot.carryOverSkips);
-    assert.deepEqual(r.restoredBins, ['jinsu']);
   });
 
   test('#23b VOID 跨案類抵分的紀錄 → 兩個籤筒都回復', () => {
@@ -169,92 +169,125 @@ describe('更正與作廢（SPEC §14 測試 21～25）', () => {
     });
     assert.notDeepEqual(bins.jinsu.tickets, snapJinsu);
 
-    applyVoid({ bins, history: [rec], targetRecord: rec, reason: '登錄錯誤' });
+    applyVoid({ config, bins, history: [rec], targetRecord: rec, reason: '登錄錯誤' });
 
     assert.deepEqual(bins.jinsu.tickets, snapJinsu);
     assert.deepEqual(bins.jinzhongsu.tickets, snapJzs);
   });
 
-  test('#24 VOID 非最近一筆（後續抽籤仍生效）→ 拒絕', () => {
+  test('#24 VOID 非最近一筆 → 改用補償模式，後續抽籤完全不動', () => {
+    // 批次抽多件時，中間某件需要作廢而後面幾件已合法抽出。
+    // 回溯會使後面那些抽籤當初面對的籤筒不復存在，其結果將失去依據；
+    // 而把合法的抽籤結果丟掉重抽，正是本系統要防止的行為。
+    // 因此改採補償：只把該次消耗的籤退還至目前籤筒。
     const config = freshConfig();
     const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+
     const r1 = draw(config, bins, {}, 1, null);
     const r2 = draw(config, bins, {}, 2, r1.recordHash);
+    const r3 = draw(config, bins, {}, 3, r2.recordHash);
+    assert.equal(bins.jinsu.tickets.length, 5);
 
-    assert.throws(
-      () => applyVoid({ bins, history: [r1, r2], targetRecord: r1, reason: '想跳過作廢' }),
-      (e) => e instanceof LotteryError && e.code === ERR.VOID_NOT_LATEST
-    );
+    const after2 = bins.jinsu.tickets.slice();
 
-    // 錯誤訊息須指出該先處理哪一筆，否則使用者不知道下一步該做什麼
-    try {
-      applyVoid({ bins, history: [r1, r2], targetRecord: r1, reason: 'x' });
-    } catch (e) {
-      assert.equal(e.details.blockedBy, r2.recordId);
-      assert.match(e.message, new RegExp(r2.recordId));
-    }
+    const r = applyVoid({ config, bins, history: [r1, r2, r3], targetRecord: r1, reason: '案號登錄錯誤' });
+
+    assert.equal(r.mode, 'compensate');
+    assert.equal(bins.jinsu.tickets.length, 6, 'r1 抽出的那支籤應退還');
+    assert.ok(bins.jinsu.tickets.includes(r1.resultUnitId), '退還的應是 r1 抽中的股');
+    assert.deepEqual(r.unaffectedLaterRecords, [r2.recordId, r3.recordId],
+      '應列出不受影響的後續抽籤');
+
+    // 除了多出的那一支籤，其餘完全沒動
+    const diff = bins.jinsu.tickets.slice();
+    diff.splice(diff.indexOf(r1.resultUnitId), 1);
+    assert.deepEqual(diff, after2, '後續抽籤的結果不得被更動');
   });
 
-  test('#24c 批次抽 2 件，作廢最新一筆後，前一筆必須可以作廢', () => {
-    // 使用者實際遇到的情形：一次抽 2 件，作廢最後一筆後，倒數第二筆仍被
-    // 拒絕並被要求「從最新一筆往回處理」——但最新一筆就是它，形成死路。
-    //
-    // 原因是舊邏輯只掃描後續紀錄，看到 r2 這筆 DRAW 就擋下，卻沒有考慮
-    // r2 本身已被作廢、對籤筒不再有任何影響。
+  test('#24b 補償模式會沖銷抵分：先消欠籤，其餘退還為籤', () => {
+    const config = freshConfig();
+    const bins = { jinsu: makeBin([U.忠, U.信, U.和]), jinzhongsu: makeBin(ALL8) };
+    // 抽中忠股、抵 3 件，筒內已無忠籤 → 欠籤 2
+    const r1 = draw(config, bins, { offsetCount: 3, pickIndex: 0 }, 1, null);
+    assert.equal(bins.jinsu.carryOverSkips[U.忠], 2);
+
+    const r2 = draw(config, bins, {}, 2, r1.recordHash);
+
+    // r2 的抽籤觸發了補籤，補籤時已消化掉 1 支欠籤，故此時只剩 1 支欠籤
+    const owedNow = bins.jinsu.carryOverSkips[U.忠] ?? 0;
+
+    const r = applyVoid({ config, bins, history: [r1, r2], targetRecord: r1, reason: '登錄錯誤' });
+    assert.equal(r.mode, 'compensate');
+    assert.equal(bins.jinsu.carryOverSkips[U.忠], undefined, '殘餘欠籤應完全沖銷');
+
+    const ch = r.changes.find((c) => c.offsetReversed);
+    assert.equal(ch.offsetReversed, 2);
+    // 沖銷與退還的拆分方式取決於期間是否發生補籤（補籤會消化欠籤），
+    // 但兩者相加必須等於原本的抵分額度，否則該股的受分機會沒有被完整補回
+    assert.equal(ch.carryOverCancelled + ch.ticketsReturned, 2,
+      '沖銷欠籤與退還籤的總和必須等於原抵分額度');
+    assert.equal(ch.carryOverCancelled, owedNow, '應先沖銷仍存在的欠籤');
+  });
+
+  test('#24c 連續補償作廢多筆，每筆各自退還自己的籤', () => {
     const config = freshConfig();
     const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
     const before = bins.jinsu.tickets.slice();
 
     const r1 = draw(config, bins, {}, 1, null);
     const r2 = draw(config, bins, {}, 2, r1.recordHash);
-    assert.equal(bins.jinsu.tickets.length, 6, '兩件抽完應少 2 支');
+    const r3 = draw(config, bins, {}, 3, r2.recordHash);
 
-    // 作廢最新一筆，並比照正式流程把 VOID 紀錄寫進歷史
-    const v1 = applyVoid({ bins, history: [r1, r2], targetRecord: r2, reason: '測試用抽籤' });
-    const voidRec = sealRecord(
-      buildAuditRecord({
-        seq: 3, type: 'VOID', at: '2026-08-04T09:00:00+08:00',
-        operator: 'github:test', payload: v1,
-      }),
-      r2.recordHash
-    );
-    const history = [r1, r2, voidRec];
+    let history = [r1, r2, r3];
+    let seq = 4;
+    for (const target of [r1, r2]) {
+      const p = applyVoid({ config, bins, history, targetRecord: target, reason: '測試' });
+      history = [...history, sealRecord(
+        buildAuditRecord({ seq: seq++, type: 'VOID', at: '2026-08-04T09:00:00+08:00', operator: 'github:test', payload: p }),
+        history[history.length - 1].recordHash
+      )];
+    }
 
-    // 此時籤筒正好等於 r1 抽完後的狀態，作廢 r1 是安全的
-    applyVoid({ bins, history, targetRecord: r1, reason: '測試用抽籤' });
-
-    assert.deepEqual(bins.jinsu.tickets, before, '兩筆都作廢後應完全回復');
-    assert.equal(bins.jinsu.cycle, 1);
-    assert.deepEqual(bins.jinsu.carryOverSkips, {});
+    // 只剩 r3 仍生效，故籤筒應為初始少一支
+    assert.equal(bins.jinsu.tickets.length, before.length - 1);
+    assert.ok(!bins.jinsu.tickets.includes(r3.resultUnitId) ||
+      bins.jinsu.tickets.filter((t) => t === r3.resultUnitId).length <
+      before.filter((t) => t === r3.resultUnitId).length,
+      'r3 抽中的股仍應少一支');
   });
 
-  test('#24d 已作廢的後續紀錄不影響判斷，未作廢的仍會擋下', () => {
+  test('#24d 已停用的股不退還籤，並於紀錄中註明', () => {
+    // 停用股的籤不該存在於籤筒內。若因作廢而退還，會使已停用的股重新
+    // 出現在籤筒中而可能被抽中。
+    const config = freshConfig();
+    const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
+    const r1 = draw(config, bins, { pickIndex: 0 }, 1, null);
+    const r2 = draw(config, bins, {}, 2, r1.recordHash);
+
+    config.units.find((u) => u.id === r1.resultUnitId).active = false;
+    const n = bins.jinsu.tickets.length;
+
+    const r = applyVoid({ config, bins, history: [r1, r2], targetRecord: r1, reason: '登錄錯誤' });
+
+    assert.equal(bins.jinsu.tickets.length, n, '停用股的籤不得退還');
+    assert.ok(r.changes.some((c) => c.skipped), '須於紀錄中註明未退還的原因');
+  });
+
+  test('#24e 重複作廢同一筆 → 拒絕（依歷史中的 VOID 紀錄判斷）', () => {
     const config = freshConfig();
     const bins = { jinsu: makeBin(ALL8), jinzhongsu: makeBin(ALL8) };
     const r1 = draw(config, bins, {}, 1, null);
-    const r2 = draw(config, bins, {}, 2, r1.recordHash);
-    const r3 = draw(config, bins, {}, 3, r2.recordHash);
 
-    // 只作廢 r3，r2 仍生效
-    const v = applyVoid({ bins, history: [r1, r2, r3], targetRecord: r3, reason: 'x' });
+    const p = applyVoid({ config, bins, history: [r1], targetRecord: r1, reason: '第一次' });
     const voidRec = sealRecord(
-      buildAuditRecord({ seq: 4, type: 'VOID', at: '2026-08-04T09:00:00+08:00', operator: 'github:test', payload: v }),
-      r3.recordHash
+      buildAuditRecord({ seq: 2, type: 'VOID', at: '2026-08-04T09:00:00+08:00', operator: 'github:test', payload: p }),
+      r1.recordHash
     );
-    const history = [r1, r2, r3, voidRec];
 
-    // r2 的效果還在，所以 r1 不可作廢，且應指向 r2 而非已作廢的 r3
-    try {
-      applyVoid({ bins, history, targetRecord: r1, reason: 'x' });
-      assert.fail('應拒絕');
-    } catch (e) {
-      assert.equal(e.code, ERR.VOID_NOT_LATEST);
-      assert.equal(e.details.blockedBy, r2.recordId, '應指向仍生效的 r2，不是已作廢的 r3');
-    }
-
-    // r2 本身則可以作廢
-    applyVoid({ bins, history, targetRecord: r2, reason: 'x' });
-    assert.equal(bins.jinsu.tickets.length, 7);
+    assert.throws(
+      () => applyVoid({ config, bins, history: [r1, voidRec], targetRecord: r1, reason: '再作廢' }),
+      (e) => e instanceof LotteryError && e.code === ERR.VOID_NOT_LATEST
+    );
   });
 
   test('#24b VOID 未填理由或重複作廢 → 拒絕', () => {

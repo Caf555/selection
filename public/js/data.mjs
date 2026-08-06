@@ -77,9 +77,12 @@ export function unitDisplayName(config, unitId) {
  * 且迴避的股會被誤計為曾受分案。
  */
 export function effectiveDraws(history) {
-  const voided = new Set(
-    history.filter((r) => r.type === 'VOID').map((r) => r.targetRecordId)
+  // 作廢的時間、理由、執行者與處理方式都必須可查——僅標示「已作廢」
+  // 而查不到原因，等於沒有留下紀錄
+  const voidInfo = new Map(
+    history.filter((r) => r.type === 'VOID').map((r) => [r.targetRecordId, r])
   );
+  const voided = new Set(voidInfo.keys());
   const superseded = new Set(
     history.filter((r) => r.type === 'REDRAW' && r.originalRecordId).map((r) => r.originalRecordId)
   );
@@ -89,6 +92,7 @@ export function effectiveDraws(history) {
       ...r,
       voided: r.voided === true || voided.has(r.recordId),
       superseded: superseded.has(r.recordId),
+      voidRecord: voidInfo.get(r.recordId) ?? null,
     }));
 }
 
