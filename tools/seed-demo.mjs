@@ -159,7 +159,7 @@ push({
 /* ── 5. 抽錯案類，整筆作廢並回復籤筒 ─────────────────────── */
 const toVoid = doDraw({ caseTypeId: 'jinzhongsu', note: '（示範：登錄時誤選案類）' });
 const vd = applyVoid({
-  bins, history, targetRecord: toVoid,
+  config, bins, history, targetRecord: toVoid,
   reason: '登錄時誤選案類，本件應為金訴案，整筆作廢後重新登錄',
 });
 seq += 1;
