@@ -3,7 +3,7 @@
   "appVersion": "1.5.0",
   "_appVersion": "前端版本號。修改 public/ 底下的檔案後必須同步提高此值與各頁面的 APP_VERSION，否則使用者的瀏覽器會繼續執行快取中的舊版程式。engine/test/version.test.mjs 會檢查兩者一致。",
   "_terminology": "units＝支援股，即參與抽籤的 8 個股，籤筒輪分的就是這個。requesters＝承辦股，案件的承辦單位，需要支援，於抽籤時與案號一併輸入。兩者為不相交的名單，承辦股不參與支援抽籤。",
-  "updatedAt": "2026-09-24T10:08:27.146+08:00",
+  "updatedAt": "2026-09-24T10:10:56.536+08:00",
   "requesters": [
     {
       "id": "test",
@@ -16,6 +16,13 @@
       "id": "rq-01",
       "name": "杏股",
       "order": 2,
+      "active": true,
+      "note": ""
+    },
+    {
+      "id": "rq-02",
+      "name": "巳股",
+      "order": 3,
       "active": true,
       "note": ""
     }
