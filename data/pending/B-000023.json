@@ -1,0 +1,45 @@
+{
+  "batchId": "B-000023",
+  "at": "2026-10-27T11:06:08.771+08:00",
+  "operator": "github:Caf555",
+  "caseTypeId": "jinzhongsu",
+  "items": [
+    {
+      "itemSeq": 0,
+      "caseNo": "115金重訴27號",
+      "requesterUnitId": "rq-01",
+      "offsetCount": 1,
+      "offsetMap": null,
+      "excludedUnitIds": [
+        "un-01",
+        "un-03",
+        "un-04",
+        "un-05",
+        "un-06",
+        "un-08"
+      ],
+      "excludeReason": "衛股相關連案件",
+      "note": ""
+    }
+  ],
+  "binsBefore": {
+    "jinzhongsu": {
+      "tickets": [
+        "un-01",
+        "un-03",
+        "un-04",
+        "un-05",
+        "un-06",
+        "un-07",
+        "un-08"
+      ],
+      "cycle": 1,
+      "carryOverSkips": {}
+    }
+  },
+  "configHash": "sha256:a0417f9a93f32c2b8ce58302a51802fa7f1cf364ef9dde79c71d8757a630e180",
+  "drand": {
+    "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "targetRound": 33422336
+  }
+}
